@@ -1,74 +1,60 @@
+using WebSocketApp.Services;
 using System.Net.WebSockets;
-using System.Text;
-using System.Text.Json;
-using System.Collections.Concurrent;
 
 var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
+builder.Services.AddSingleton<ConnectionManager>();
+builder.Services.AddSingleton<MessageHandler>();
 
+var app = builder.Build();
 app.UseWebSockets();
 
-var clients = new ConcurrentDictionary<string, WebSocket>();
-
-app.Map("/ws/{id}", async (string id, HttpContext context) =>
+app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr, MessageHandler handler) =>
 {
-    if (context.WebSockets.IsWebSocketRequest)
+    if (!context.WebSockets.IsWebSocketRequest) return;
+
+    // Configure les options du WebSocket
+    var options = new WebSocketAcceptContext {
+        // Le serveur enverra un "Ping" toutes les 30 secondes
+        KeepAliveInterval = TimeSpan.FromSeconds(30) 
+    };
+
+    using var webSocket = await context.WebSockets.AcceptWebSocketAsync(options);
+
+    mgr.AddClient(id, webSocket);
+
+    string socketId = webSocket.GetHashCode().ToString("X");
+
+    Console.WriteLine($"[+] {id} [Socket:{socketId}] connecté");
+
+    var buffer = new byte[1024 * 4];
+    try
     {
-        using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-        
-        // Enregistrement du client
-        clients[id] = webSocket;
-        Console.WriteLine($"Client '{id}' connecté. Total: {clients.Count}");
-
-        try
+        while (webSocket.State == System.Net.WebSockets.WebSocketState.Open)
         {
-            var buffer = new byte[1024 * 4];
-            while (webSocket.State == WebSocketState.Open)
-            {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    
+            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+            
+            if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) break;
 
-                if (result.MessageType == WebSocketMessageType.Text)
-                {
-                    var messageRaw = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    
-                    try 
-                    {
-                        // Analyse du JSON
-                        using var doc = JsonDocument.Parse(messageRaw);
-                        var root = doc.RootElement;
-                        
-                        string targetId = root.GetProperty("to").GetString();
-                        var data = root.GetProperty("data").GetRawText();
-
-                        if (clients.TryGetValue(targetId, out var targetSocket) && targetSocket.State == WebSocketState.Open)
-                        {
-                            var responseBytes = Encoding.UTF8.GetBytes(data);
-                            await targetSocket.SendAsync(new ArraySegment<byte>(responseBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                            Console.WriteLine($"Message de '{id}' vers '{targetId}' transféré.");
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Destinataire '{targetId}' non trouvé.");
-                        }
-                    }
-                    catch (Exception ex) { Console.WriteLine($"Erreur format JSON: {ex.Message}"); }
-                }
-                else if (result.MessageType == WebSocketMessageType.Close)
-                {
-                    break;
-                }
-            }
-        }
-        finally
-        {
-            // Nettoyage de la RAM à la déconnexion
-            clients.TryRemove(id, out _);
-            Console.WriteLine($"Client '{id}' déconnecté.");
+            var message = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
+            await handler.HandleAsync(id, message);
         }
     }
-    else
+    catch (System.Net.WebSockets.WebSocketException ex)
     {
-        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        Console.WriteLine($"[!] Erreur réseau pour {id} [Socket:{socketId}] : {ex.Message}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[!] Erreur pour {id} [Socket:{socketId}] : {ex.Message}");
+        
+    }
+    finally
+    {
+        await mgr.RemoveClient(id, webSocket);
+        Console.WriteLine($"[-] {id} [Socket:{socketId}] déconnecté");
+        
     }
 });
 
