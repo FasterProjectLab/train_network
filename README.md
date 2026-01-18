@@ -32,6 +32,15 @@
     make run
 </pre>
 
+Note: To avoid conflit, disable the interface in your host
+
+<pre>
+# In /etc/NetworkManager/NetworkManager.conf
+[keyfile]
+unmanaged-devices=interface-name:wlp3s0
+</pre>
+
+
 6. Flash the target
 
 <pre>
