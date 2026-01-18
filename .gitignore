@@ -1,0 +1,4 @@
+dev/target/build
+dev/target/main/server_cert.pem
+dev/server/distrib/server_cert.pem
+dev/target/firmware.bin
