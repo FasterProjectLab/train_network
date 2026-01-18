@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+WORKDIR /app
+
+# On expose le port 8080
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
+# Force le mode développement pour voir les erreurs détaillées
+ENV ASPNETCORE_ENVIRONMENT=Development 
+
+# On ne fait pas de COPY total ici pour profiter du montage de volume
+# On copie juste le projet pour restaurer les packages au build de l'image
+COPY ./src/*.csproj ./
+RUN dotnet restore
+
+# La commande magique : dotnet watch run
+# --non-interactive : évite que le processus attende une touche clavier
+# --no-launch-profile : évite d'ouvrir un navigateur
+ENTRYPOINT ["dotnet", "watch", "run", "--non-interactive", "--no-launch-profile", "--no-hot-reload"]
