@@ -6,8 +6,33 @@
 #include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_camera.h"
 
 static esp_timer_handle_t heartbeat_timer;
+bool camera_state = false;
+
+void stream_task(void *pvParameters) {
+    esp_websocket_client_handle_t client_handle = (esp_websocket_client_handle_t)pvParameters;
+
+    while (1) {
+        if (esp_websocket_client_is_connected(client_handle) && camera_state) {
+            camera_fb_t * fb = esp_camera_fb_get();
+            if (fb) {
+                    esp_err_t err = esp_websocket_client_send_bin(client_handle, (const char *)fb->buf, fb->len, portMAX_DELAY);
+                    if (err == ESP_OK) {
+                        
+                    } else {
+                        ESP_LOGW(TAG, "Frame sautée, buffer plein ou réseau lent");
+                    }
+                
+                esp_camera_fb_return(fb);
+            } else {
+                ESP_LOGW(TAG, "Camera not ready");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(50)); 
+    }
+}
 
 static void send_heartbeat_ping(void* arg) {
     esp_websocket_client_handle_t client_handle = (esp_websocket_client_handle_t)arg;
@@ -39,7 +64,6 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
             if (data->data_len > 0 && data->op_code == 0x01) {
                 ESP_LOGI(TAG, "WS: Données reçues (%d octets): %.*s", data->data_len, data->data_len, (char *)data->data_ptr);
 
-                // 1. Parser le message reçu
                 cJSON *root = cJSON_ParseWithLength((char *)data->data_ptr, data->data_len);
                 if (root == NULL) {
                     const char *error_ptr = cJSON_GetErrorPtr();
@@ -49,17 +73,20 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                     break; 
                 }
 
-                // 2. Extraire les champs
                 cJSON *type = cJSON_GetObjectItem(root, "type");
                 cJSON *content = cJSON_GetObjectItem(root, "data");
 
-                // 3. Logique de décision
-                if (cJSON_IsString(type) && strcmp(type->valuestring, "push") == 0) {
-                    if (cJSON_IsString(content) && strcmp(content->valuestring, "update firmware") == 0) {
+                if (cJSON_IsString(type) && strcmp(type->valuestring, "action") == 0) {
+                    if (cJSON_IsString(content) && strcmp(content->valuestring, "update_firmware") == 0) {
                         ESP_LOGW(TAG, "ORDRE OTA REÇU ! Lancement du service...");
-                        
-                        // Appel de la fonction définie dans ota_service.c
                         start_ota_update();
+                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "start_camera") == 0) {
+                        ESP_LOGI(TAG, "Démarrage du flux vidéo");
+                        if(!camera_state) { camera_state = true; }
+
+                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "stop_camera") == 0) {
+                        ESP_LOGI(TAG, "Arrêt du flux vidéo");
+                        camera_state = false;
                     }
                 }
 
@@ -94,7 +121,7 @@ void websocket_app_start(void) {
 
     const esp_websocket_client_config_t ws_cfg = {
         .uri = full_url,
-        .reconnect_timeout_ms = 10000, 
+        .reconnect_timeout_ms = 10000,
         .network_timeout_ms = 10000,
     };
 
@@ -103,4 +130,7 @@ void websocket_app_start(void) {
     esp_websocket_client_handle_t client = esp_websocket_client_init(&ws_cfg);
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
     esp_websocket_client_start(client);
+
+    xTaskCreatePinnedToCore(stream_task, "stream_task", 4096, (void*)client, 5, NULL, 1);
 }
+

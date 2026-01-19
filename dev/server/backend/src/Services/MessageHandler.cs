@@ -16,7 +16,7 @@ public class MessageHandler(ConnectionManager connectionManager)
 
             if (msg == null) return;
 
-            if (msg.Type == "get-clients")
+            if (msg.Type == "get_clients")
             {
                 await SendUserList(senderId);
             } else if (!string.IsNullOrEmpty(msg.To))
@@ -32,7 +32,7 @@ public class MessageHandler(ConnectionManager connectionManager)
         var socket = connectionManager.GetClient(clientId);
         if (socket == null) return;
 
-        var response = new { type = "users-list", users = connectionManager.GetAllIds() };
+        var response = new { type = "users", users = connectionManager.GetAllIds() };
         await SendJsonAsync(socket, response);
     }
 
