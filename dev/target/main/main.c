@@ -13,6 +13,11 @@ void app_main(void) {
     esp_netif_init();
     esp_event_loop_create_default();
 
+    if (camera_init_service() != ESP_OK) {
+        ESP_LOGE(TAG, "Échec critique Caméra. Arrêt.");
+        return;
+    }
+
     // 2. Lancement du service Wi-Fi
     // Le Wi-Fi lancera lui-même le WS et l'OTA une fois connecté
     ESP_LOGI(TAG, "Initialisation Wi-Fi...");

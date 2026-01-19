@@ -6,8 +6,33 @@
 #include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_camera.h"
 
 static esp_timer_handle_t heartbeat_timer;
+
+static bool is_streaming = false;
+static TaskHandle_t camera_task_handle = NULL;
+
+
+void camera_stream_task(void *pvParameters) {
+    esp_websocket_client_handle_t client = (esp_websocket_client_handle_t)pvParameters;
+    
+    while (1) {
+        if (is_streaming && esp_websocket_client_is_connected(client)) {
+            camera_fb_t *fb = esp_camera_fb_get();
+            if (fb) {
+                // Envoi de l'image en format BINAIRE
+                esp_websocket_client_send_bin(client, (const char *)fb->buf, fb->len, portMAX_DELAY);
+                esp_camera_fb_return(fb);
+            }
+        } else {
+            // Si on ne streame pas, on attend un peu pour ne pas saturer le CPU
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        // Petit délai pour laisser l'IDLE task s'exécuter et éviter le Watchdog
+        vTaskDelay(1); 
+    }
+}
 
 static void send_heartbeat_ping(void* arg) {
     esp_websocket_client_handle_t client_handle = (esp_websocket_client_handle_t)arg;
@@ -33,6 +58,10 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
             };
             esp_timer_create(&timer_args, &heartbeat_timer);
             esp_timer_start_periodic(heartbeat_timer, 5 * 1000000);
+
+            if (camera_task_handle == NULL) {
+                xTaskCreate(camera_stream_task, "camera_task", 4096, (void*)client, 5, &camera_task_handle);
+            }
             break;
 
         case WEBSOCKET_EVENT_DATA:
@@ -60,6 +89,13 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                         
                         // Appel de la fonction définie dans ota_service.c
                         start_ota_update();
+                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "start camera") == 0) {
+                        ESP_LOGI(TAG, "Démarrage du flux vidéo");
+                        is_streaming = true;
+
+                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "stop camera") == 0) {
+                        ESP_LOGI(TAG, "Arrêt du flux vidéo");
+                        is_streaming = false;
                     }
                 }
 
@@ -94,7 +130,8 @@ void websocket_app_start(void) {
 
     const esp_websocket_client_config_t ws_cfg = {
         .uri = full_url,
-        .reconnect_timeout_ms = 10000, 
+        .buffer_size = 10240, // Augmentez à 10 Ko ou plus
+        .reconnect_timeout_ms = 10000,
         .network_timeout_ms = 10000,
     };
 
@@ -104,3 +141,4 @@ void websocket_app_start(void) {
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
     esp_websocket_client_start(client);
 }
+

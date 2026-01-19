@@ -14,5 +14,6 @@ static const char *TAG = "ESP32_APP";
 void wifi_init_sta(void);
 void websocket_app_start(void);
 void start_ota_update(void);
+esp_err_t camera_init_service(void);
 
 #endif

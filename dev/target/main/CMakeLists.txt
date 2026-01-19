@@ -2,7 +2,8 @@ set(srcs
     "main.c" 
     "wifi_service.c" 
     "ws_service.c" 
-    "ota_service.c")
+    "ota_service.c"
+    "camera_service.c")
 
 idf_component_register(
     SRCS ${srcs}
@@ -20,4 +21,5 @@ idf_component_register(
         json                # Pour cJSON.h
         esp_partition       # Pour la gestion des partitions
         app_update          # Pour la validation du nouveau firmware
+        esp32-camera
 )

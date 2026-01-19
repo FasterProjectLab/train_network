@@ -1,5 +1,6 @@
 using WebSocketApp.Services;
 using System.Net.WebSockets;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<ConnectionManager>();
@@ -31,14 +32,30 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
     {
         while (webSocket.State == System.Net.WebSockets.WebSocketState.Open)
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-    
-            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token);
+            using var ms = new MemoryStream();
+            WebSocketReceiveResult result;
             
-            if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) break;
+            // On boucle pour reconstruire l'image complète
+            do
+            {
+                result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                ms.Write(buffer, 0, result.Count);
+            } 
+            while (!result.EndOfMessage);
 
-            var message = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
-            await handler.HandleAsync(id, message);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+
+            if (result.MessageType == WebSocketMessageType.Binary)
+            {
+                // On récupère l'image complète reconstruite dans le MemoryStream
+                byte[] completeImage = ms.ToArray();
+                await handler.ForwardBinaryAsync(id, completeImage, completeImage.Length);
+            }
+            else if (result.MessageType == WebSocketMessageType.Text)
+            {
+                string textContent = Encoding.UTF8.GetString(ms.ToArray());
+                await handler.HandleAsync(id, textContent);
+            }
         }
     }
     catch (System.Net.WebSockets.WebSocketException ex)

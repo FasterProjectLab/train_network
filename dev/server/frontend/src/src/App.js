@@ -10,8 +10,29 @@ function App() {
   
   const socket = useRef(null);
   const pingInterval = useRef(null);
+  const canvasRef = useRef(null);
 
-  // --- GESTION DU HEARTBEAT (PING) ---
+  // --- GESTION DU FLUX VIDÉO (CANVAS) ---
+  const renderImage = (blob) => {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+
+    img.onload = () => {
+      // Ajuste le canvas à la taille de l'image reçue (VGA par défaut)
+      if (canvasRef.current.width !== img.width) {
+        canvasRef.current.width = img.width;
+        canvasRef.current.height = img.height;
+      }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url); // Libération immédiate de la mémoire
+    };
+    img.src = url;
+  };
+
+  // --- HEARTBEAT ---
   useEffect(() => {
     if (isConnected) {
       pingInterval.current = setInterval(() => {
@@ -20,52 +41,46 @@ function App() {
         }
       }, 5000);
     }
-
-    return () => {
-      if (pingInterval.current) clearInterval(pingInterval.current);
-    };
+    return () => { if (pingInterval.current) clearInterval(pingInterval.current); };
   }, [isConnected]);
 
-  // --- FONCTION DE CONNEXION ---
+  // --- CONNEXION ---
   const connect = () => {
     if (!myId) return;
-    // Remplacez localhost par l'IP du serveur si nécessaire
     socket.current = new WebSocket(`ws://localhost:8080/ws/${myId}`);
+    socket.current.binaryType = 'blob'; // Crucial pour recevoir le flux de l'ESP32
 
     socket.current.onopen = () => {
       setIsConnected(true);
       socket.current.send(JSON.stringify({ type: "get-clients" }));
-      addLog("Connecté au serveur en tant que : " + myId);
+      addLog("Connecté en tant que : " + myId);
     };
 
     socket.current.onmessage = (event) => {
+      // 1. Gestion du binaire (Vidéo)
+      if (event.data instanceof Blob) {
+        renderImage(event.data);
+        return;
+      }
+
+      // 2. Gestion du texte (JSON)
       try {
         const msg = JSON.parse(event.data);
-
-        // On ignore les pings qui pourraient revenir du serveur
         if (msg.type === "ping") return;
 
         if (msg.type === "users-list") {
-          // Mise à jour de la liste des appareils (en excluant soi-même)
           setUsers(msg.users.filter(u => u !== myId));
         } else {
-          // Log des messages reçus des ESP32 (ex: retours d'état)
-          addLog(`Réception de [${msg.from}]: ${JSON.stringify(msg.data)}`);
+          addLog(`De [${msg.from}]: ${JSON.stringify(msg.data)}`);
         }
       } catch (e) {
-        console.error("Erreur de parsing JSON", e);
+        console.error("Erreur JSON", e);
       }
     };
 
     socket.current.onclose = () => {
       setIsConnected(false);
-      addLog("⚠️ Déconnecté du serveur");
-      if (pingInterval.current) clearInterval(pingInterval.current);
-    };
-
-    socket.current.onerror = (error) => {
-      addLog("❌ Erreur WebSocket détectée");
-      console.error(error);
+      addLog("⚠️ Déconnecté");
     };
   };
 
@@ -74,15 +89,10 @@ function App() {
     setStatusLogs(prev => [new Date().toLocaleTimeString() + " - " + text, ...prev].slice(0, 10));
   };
 
-  const sendUpdateFirmware = () => {
+  const sendCommand = (type, data = "") => {
     if (socket.current?.readyState === WebSocket.OPEN && targetId) {
-      const payload = { 
-        to: targetId, 
-        type: "push", 
-        data: "update firmware" 
-      };
-      socket.current.send(JSON.stringify(payload));
-      addLog(`🚀 Commande OTA envoyée à ${targetId}`);
+      socket.current.send(JSON.stringify({ to: targetId, type, data }));
+      addLog(`🚀 Ordre ${type} envoyé à ${targetId}`);
     }
   };
 
@@ -92,81 +102,71 @@ function App() {
     }
   };
 
-  // --- RENDU : ÉCRAN DE CONNEXION ---
   if (!isConnected) {
     return (
       <div className="login-container">
         <div className="login-card">
           <h2>Admin Panel</h2>
-          <p>Entrez votre identifiant pour vous connecter au serveur.</p>
           <input 
-            placeholder="Admin ID (ex: PC-Admin)" 
+            placeholder="Admin ID (ex: PC-Control)" 
             value={myId} 
             onChange={e => setMyId(e.target.value)} 
             onKeyDown={e => e.key === 'Enter' && connect()}
           />
-          <button onClick={connect}>Se connecter</button>
+          <button onClick={connect} className="refresh-btn">Se connecter</button>
         </div>
       </div>
     );
   }
 
-  // --- RENDU : DASHBOARD ---
   return (
     <div className="app-container">
-      {/* Sidebar : Liste des appareils */}
       <div className="sidebar">
-        <div className="sidebar-header">
-          <h3>Appareils connectés</h3>
-          <button onClick={refreshUsers} className="refresh-btn" title="Actualiser">🔄</button>
-        </div>
+        <button onClick={refreshUsers} className="refresh-btn">🔄 Actualiser Liste</button>
+        <h3>Appareils</h3>
         <div className="user-list">
-          {users.length === 0 && <p className="empty-msg">Aucun train détecté...</p>}
           {users.map(u => (
-            <div 
-              key={u} 
-              className={`user-item ${targetId === u ? 'active' : ''}`}
-              onClick={() => setTargetId(u)}
-            >
+            <div key={u} className={`user-item ${targetId === u ? 'active' : ''}`} onClick={() => setTargetId(u)}>
               <span className="status-dot"></span> {u}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Main Panel : Contrôle de l'appareil sélectionné */}
       <div className="control-panel">
         {targetId ? (
           <div className="panel-content">
             <header className="panel-header">
-              <h2>ID Appareil : <span className="highlight">{targetId}</span></h2>
+              <h2>Contrôle : <span className="highlight">{targetId}</span></h2>
             </header>
             
-            <div className="actions-section">
-              <div className="card">
-                <h3>Mise à jour (OTA)</h3>
-                <p>Déclencher le téléchargement du nouveau firmware sur l'ESP32.</p>
-                <button onClick={sendUpdateFirmware} className="ota-btn">
-                  Lancer l'Update Firmware
-                </button>
+            <div className="actions-section" style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+              {/* Vidéo Live */}
+              <div className="card" style={{ flex: '2', minWidth: '400px' }}>
+                <h3>Flux Vidéo Temps Réel</h3>
+                <canvas ref={canvasRef} style={{ width: '100%', background: '#000', borderRadius: '5px' }} />
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <button onClick={() => sendCommand("push", "start camera")} style={{ background: '#27ae60', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Démarrer</button>
+                  <button onClick={() => sendCommand("push", "stop camera")} style={{ background: '#7f8c8d', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Arrêter</button>
+                </div>
+              </div>
+
+              {/* Maintenance */}
+              <div className="card" style={{ flex: '1', minWidth: '250px' }}>
+                <h3>Maintenance</h3>
+                <button onClick={() => sendCommand("push", "update firmware")} className="ota-btn">OTA Update</button>
               </div>
             </div>
 
-            <div className="logs-section">
-              <h3>Derniers événements</h3>
+            <div className="logs-section" style={{ marginTop: '20px' }}>
+              <h3>Console Système</h3>
               <div className="log-window">
-                {statusLogs.map((log, i) => (
-                  <div key={i} className="log-entry">{log}</div>
-                ))}
-                {statusLogs.length === 0 && <div className="log-placeholder">En attente de messages...</div>}
+                {statusLogs.map((log, i) => <div key={i} className="log-entry">{log}</div>)}
               </div>
             </div>
           </div>
         ) : (
-          <div className="empty-state">
-            <div className="empty-icon">🔌</div>
-            <p>Sélectionnez un train dans la liste de gauche pour envoyer des commandes.</p>
-          </div>
+          <div className="panel-content">Sélectionnez un appareil pour commencer...</div>
         )}
       </div>
     </div>
