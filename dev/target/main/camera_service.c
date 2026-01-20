@@ -1,6 +1,10 @@
 #include "esp_camera.h"
 #include "esp_log.h"
 #include "main_config.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "lwip/sockets.h"
+#include <string.h>
 
 // Pins pour ESP32-S3-CAM standard (Freenove/AI-Thinker)
 #define CAM_PIN_PWDN -1
@@ -19,6 +23,7 @@
 #define CAM_PIN_VSYNC 6
 #define CAM_PIN_HREF 7
 #define CAM_PIN_PCLK 13
+
 
 esp_err_t camera_init_service(void) {
     camera_config_t config = {
@@ -39,12 +44,12 @@ esp_err_t camera_init_service(void) {
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
 
-        .xclk_freq_hz = 20000000,
+        .xclk_freq_hz = 10000000,
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_QVGA,
-        .jpeg_quality = 20,
+        .frame_size = FRAMESIZE_VGA,
+        .jpeg_quality = 25,
         .fb_count = 2,                 // Exploite ta PSRAM de 8MB
         .fb_location = CAMERA_FB_IN_PSRAM,
         .grab_mode = CAMERA_GRAB_LATEST // Minimise la latence

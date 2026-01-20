@@ -49,3 +49,7 @@ unmanaged-devices=interface-name:wlp3s0
     idf.py monitor
 </pre>
 
+
+
+# Lire video
+ffplay -i http://192.168.10.146/stream -fflags nobuffer -flags low_delay -framedrop -strict experimental -vf "setpts=0"

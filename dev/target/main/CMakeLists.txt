@@ -22,4 +22,5 @@ idf_component_register(
         esp_partition       # Pour la gestion des partitions
         app_update          # Pour la validation du nouveau firmware
         esp32-camera
+        esp_http_server
 )
