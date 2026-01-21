@@ -53,3 +53,13 @@ unmanaged-devices=interface-name:wlp3s0
 
 # Lire video
 ffplay -i http://192.168.10.146/stream -fflags nobuffer -flags low_delay -framedrop -strict experimental -vf "setpts=0"
+
+# Créer l'environnement
+python3 -m venv env
+
+# L'activer
+source env/bin/activate
+
+pip install websockets opencv-python numpy
+
+python3 test.py

@@ -10,36 +10,55 @@
 
 static esp_timer_handle_t heartbeat_timer;
 
-#include "esp_http_server.h"
+#include "esp_websocket_client.h"
 
-esp_err_t stream_handler(httpd_req_t *req) {
-    camera_fb_t * fb = NULL;
-    esp_err_t res = ESP_OK;
-    httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=123456");
+// Instance du client WebSocket
+esp_websocket_client_handle_t client_v;
 
-    while(true) {
-        fb = esp_camera_fb_get();
-        if (!fb) {
-            printf("Camera capture failed\n");
-            continue;
-        }
-
-        // En-tête de la frame
-        char part_buf[128];
-        int hlen = snprintf(part_buf, sizeof(part_buf),
-            "--123456\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", 
-            fb->len);
-        
-        // Envoi du header + les données de l'image
-        if(httpd_resp_send_chunk(req, part_buf, hlen) != ESP_OK ||
-        httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len) != ESP_OK) {
-            esp_camera_fb_return(fb);
-            break; // Le client a quitté
-        }
-        
-        esp_camera_fb_return(fb);
+static void websocket_event_handler_v(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
+    esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
+    switch (event_id) {
+        case WEBSOCKET_EVENT_CONNECTED:
+            printf("WebSocket: Connecté au serveur\n");
+            break;
+        case WEBSOCKET_EVENT_DISCONNECTED:
+            printf("WebSocket: Déconnecté\n");
+            break;
+        case WEBSOCKET_EVENT_DATA:
+            // Si le serveur envoie une réponse, elle arrive ici
+            break;
+        case WEBSOCKET_EVENT_ERROR:
+            printf("WebSocket: Erreur\n");
+            break;
     }
-    return res;
+}
+
+void init_websocket_v() {
+    esp_websocket_client_config_t ws_cfg = {
+        .uri = "ws://192.168.10.1:8090", // REMPLACEZ PAR L'IP DE VOTRE PC
+    };
+
+    client_v = esp_websocket_client_init(&ws_cfg);
+    
+    // Enregistrement du gestionnaire d'événements
+    esp_websocket_register_events(client_v, WEBSOCKET_EVENT_ANY, websocket_event_handler_v, (void *)client_v);
+
+    // Démarrage du client
+    esp_websocket_client_start(client_v);
+}
+
+void stream_task(void *pvParameters) {
+    while (1) {
+        camera_fb_t * fb = esp_camera_fb_get();
+        if (fb) {
+            if (esp_websocket_client_is_connected(client_v)) {
+                // Envoi du JPEG brut au serveur Python
+                esp_websocket_client_send_bin(client_v, (const char *)fb->buf, fb->len, portMAX_DELAY);
+            }
+            esp_camera_fb_return(fb);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50)); // ~20 FPS maximum
+    }
 }
 
 static void send_heartbeat_ping(void* arg) {
@@ -143,11 +162,16 @@ void websocket_app_start(void) {
     // esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
     // esp_websocket_client_start(client);
 
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    httpd_handle_t server = NULL;
-    if (httpd_start(&server, &config) == ESP_OK) {
-        httpd_uri_t uri = { .uri = "/stream", .method = HTTP_GET, .handler = stream_handler };
-        httpd_register_uri_handler(server, &uri);
-    }
+    init_websocket_v();
+
+    xTaskCreatePinnedToCore(
+        stream_task,    // Nom de la fonction
+        "stream_task",  // Nom pour le debug
+        4096,           // Taille de la pile (Stack size en octets)
+        NULL,           // Paramètres à passer
+        5,              // Priorité (5 est une priorité moyenne/haute)
+        NULL,            // Handle de la tâche (optionnel)
+        1
+    );
 }
 
