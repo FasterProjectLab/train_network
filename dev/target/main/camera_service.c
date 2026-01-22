@@ -1,8 +1,6 @@
 #include "esp_camera.h"
 #include "esp_log.h"
 #include "main_config.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "lwip/sockets.h"
 #include <string.h>
 
@@ -49,7 +47,7 @@ esp_err_t camera_init_service(void) {
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size = FRAMESIZE_VGA,
-        .jpeg_quality = 25,
+        .jpeg_quality = 15,
         .fb_count = 2,                 // Exploite ta PSRAM de 8MB
         .fb_location = CAMERA_FB_IN_PSRAM,
         .grab_mode = CAMERA_GRAB_LATEST // Minimise la latence

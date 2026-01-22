@@ -13,6 +13,8 @@ void app_main(void) {
     esp_netif_init();
     esp_event_loop_create_default();
 
+    perf_monitor_start(20000);
+
     if (camera_init_service() != ESP_OK) {
         ESP_LOGE(TAG, "Échec critique Caméra. Arrêt.");
         return;

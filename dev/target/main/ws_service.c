@@ -10,52 +10,25 @@
 
 static esp_timer_handle_t heartbeat_timer;
 
-#include "esp_websocket_client.h"
-
-// Instance du client WebSocket
-esp_websocket_client_handle_t client_v;
-
-static void websocket_event_handler_v(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
-    esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
-    switch (event_id) {
-        case WEBSOCKET_EVENT_CONNECTED:
-            printf("WebSocket: Connecté au serveur\n");
-            break;
-        case WEBSOCKET_EVENT_DISCONNECTED:
-            printf("WebSocket: Déconnecté\n");
-            break;
-        case WEBSOCKET_EVENT_DATA:
-            // Si le serveur envoie une réponse, elle arrive ici
-            break;
-        case WEBSOCKET_EVENT_ERROR:
-            printf("WebSocket: Erreur\n");
-            break;
-    }
-}
-
-void init_websocket_v() {
-    esp_websocket_client_config_t ws_cfg = {
-        .uri = "ws://192.168.10.1:8090", // REMPLACEZ PAR L'IP DE VOTRE PC
-    };
-
-    client_v = esp_websocket_client_init(&ws_cfg);
-    
-    // Enregistrement du gestionnaire d'événements
-    esp_websocket_register_events(client_v, WEBSOCKET_EVENT_ANY, websocket_event_handler_v, (void *)client_v);
-
-    // Démarrage du client
-    esp_websocket_client_start(client_v);
-}
-
 void stream_task(void *pvParameters) {
+    esp_websocket_client_handle_t client_handle = (esp_websocket_client_handle_t)pvParameters;
+
     while (1) {
+
         camera_fb_t * fb = esp_camera_fb_get();
         if (fb) {
-            if (esp_websocket_client_is_connected(client_v)) {
+            if (esp_websocket_client_is_connected(client_handle)) {
                 // Envoi du JPEG brut au serveur Python
-                esp_websocket_client_send_bin(client_v, (const char *)fb->buf, fb->len, portMAX_DELAY);
+                esp_err_t err = esp_websocket_client_send_bin(client_handle, (const char *)fb->buf, fb->len, portMAX_DELAY);
+                if (err == ESP_OK) {
+                    
+                } else {
+                    ESP_LOGW(TAG, "Frame sautée, buffer plein ou réseau lent");
+                }
             }
             esp_camera_fb_return(fb);
+        } else {
+            ESP_LOGW(TAG, "Camera not ready");
         }
         vTaskDelay(pdMS_TO_TICKS(50)); // ~20 FPS maximum
     }
@@ -78,14 +51,14 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI(TAG, "WS: Connecté");
-            const esp_timer_create_args_t timer_args = {
-                .callback = &send_heartbeat_ping,
-                .arg = (void*)client,
-                .name = "heartbeat"
-            };
-            esp_timer_create(&timer_args, &heartbeat_timer);
-            esp_timer_start_periodic(heartbeat_timer, 5 * 1000000);
-
+            // const esp_timer_create_args_t timer_args = {
+            //     .callback = &send_heartbeat_ping,
+            //     .arg = (void*)client,
+            //     .name = "heartbeat"
+            // };
+            // esp_timer_create(&timer_args, &heartbeat_timer);
+            // esp_timer_start_periodic(heartbeat_timer, 5 * 1000000);
+            break;
 
         case WEBSOCKET_EVENT_DATA:
             if (data->data_len > 0 && data->op_code == 0x01) {
@@ -146,29 +119,27 @@ void websocket_app_start(void) {
     static char full_url[128];
     char mac_id[13];
 
-    // get_mac_address(mac_id, sizeof(mac_id));
-    // snprintf(full_url, sizeof(full_url), SERVER_WS_URL, mac_id);
+    get_mac_address(mac_id, sizeof(mac_id));
+    snprintf(full_url, sizeof(full_url), SERVER_WS_URL);
 
-    // const esp_websocket_client_config_t ws_cfg = {
-    //     .uri = full_url,
-    //     .buffer_size = 10240, // Augmentez à 10 Ko ou plus
-    //     .reconnect_timeout_ms = 10000,
-    //     .network_timeout_ms = 10000,
-    // };
+    const esp_websocket_client_config_t ws_cfg = {
+        .uri = full_url,
+        .reconnect_timeout_ms = 10000,
+        .network_timeout_ms = 10000,
+    };
 
-    // ESP_LOGI(TAG, "Connexion à : %s", full_url);
+    ESP_LOGI(TAG, "Connexion à : %s", full_url);
 
-    // esp_websocket_client_handle_t client = esp_websocket_client_init(&ws_cfg);
-    // esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
-    // esp_websocket_client_start(client);
+    esp_websocket_client_handle_t client = esp_websocket_client_init(&ws_cfg);
+    esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
+    esp_websocket_client_start(client);
 
-    init_websocket_v();
 
     xTaskCreatePinnedToCore(
         stream_task,    // Nom de la fonction
         "stream_task",  // Nom pour le debug
         4096,           // Taille de la pile (Stack size en octets)
-        NULL,           // Paramètres à passer
+        (void*)client,           // Paramètres à passer
         5,              // Priorité (5 est une priorité moyenne/haute)
         NULL,            // Handle de la tâche (optionnel)
         1

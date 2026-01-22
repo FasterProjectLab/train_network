@@ -5,7 +5,7 @@
 
 #define WIFI_SSID      "train_network"
 #define WIFI_PASS      "password123"
-#define SERVER_WS_URL  "ws://192.168.10.1:8080/ws/train-%s"
+#define SERVER_WS_URL  "ws://192.168.10.1:8080/ws"
 #define FIRMWARE_URL   "https://192.168.10.1/firmware.bin"
 
 static const char *TAG = "ESP32_APP";
@@ -15,5 +15,8 @@ void wifi_init_sta(void);
 void websocket_app_start(void);
 void start_ota_update(void);
 esp_err_t camera_init_service(void);
+
+esp_err_t perf_monitor_start(uint32_t interval_ms);
+void perf_monitor_stop();
 
 #endif

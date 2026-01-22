@@ -24,8 +24,8 @@ async def handle_esp32_stream(websocket):
 
 async def main():
     # On lance le serveur sur le port 8090
-    async with websockets.serve(handle_esp32_stream, "0.0.0.0", 8090):
-        print("Serveur WebSocket en attente sur le port 8090...")
+    async with websockets.serve(handle_esp32_stream, "0.0.0.0", 8080):
+        print("Serveur WebSocket en attente sur le port 8080...")
         await asyncio.Future()  # Maintient le serveur ouvert indéfiniment
 
 if __name__ == "__main__":

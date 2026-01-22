@@ -13,7 +13,7 @@ static void event_handler(void* arg, esp_event_base_t base, int32_t id, void* da
         ESP_LOGI(TAG, "Connecté ! IP: " IPSTR, IP2STR(&event->ip_info.ip));
         
         esp_wifi_set_ps(WIFI_PS_NONE);
-        
+
         // Une fois l'IP obtenue, on lance les services dépendants du réseau
         websocket_app_start();
     }
