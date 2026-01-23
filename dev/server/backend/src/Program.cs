@@ -45,14 +45,30 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
 
             if (result.MessageType == WebSocketMessageType.Close) break;
 
-            if (result.MessageType == WebSocketMessageType.Binary)
+            else if (result.MessageType == WebSocketMessageType.Binary)
             {
-                // On récupère l'image complète reconstruite dans le MemoryStream
-                byte[] completeImage = ms.ToArray();
-                await handler.ForwardBinaryAsync(id, completeImage, completeImage.Length);
+                byte[] frame = ms.ToArray();
+
+                // (Optionnel) sécurité taille frame
+                if (frame.Length > 400_000)
+                    return;
+
+                // Relais du flux vers les autres clients (admins)
+                foreach (var client in mgr.GetAllExcept(id))
+                {
+                    if (client.State == WebSocketState.Open)
+                    {
+                        await client.SendAsync(
+                            new ArraySegment<byte>(frame),
+                            WebSocketMessageType.Binary,
+                            true,
+                            CancellationToken.None
+                        );
+                    }
+                }
             }
-            else if (result.MessageType == WebSocketMessageType.Text)
-            {
+
+            else if (result.MessageType == WebSocketMessageType.Text){
                 string textContent = Encoding.UTF8.GetString(ms.ToArray());
                 await handler.HandleAsync(id, textContent);
             }

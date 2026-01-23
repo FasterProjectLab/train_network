@@ -9,28 +9,28 @@
 #include "esp_camera.h"
 
 static esp_timer_handle_t heartbeat_timer;
+bool camera_state = false;
 
 void stream_task(void *pvParameters) {
     esp_websocket_client_handle_t client_handle = (esp_websocket_client_handle_t)pvParameters;
 
     while (1) {
-
-        camera_fb_t * fb = esp_camera_fb_get();
-        if (fb) {
-            if (esp_websocket_client_is_connected(client_handle)) {
-                // Envoi du JPEG brut au serveur Python
-                esp_err_t err = esp_websocket_client_send_bin(client_handle, (const char *)fb->buf, fb->len, portMAX_DELAY);
-                if (err == ESP_OK) {
-                    
-                } else {
-                    ESP_LOGW(TAG, "Frame sautée, buffer plein ou réseau lent");
-                }
+        if (esp_websocket_client_is_connected(client_handle) && camera_state) {
+            camera_fb_t * fb = esp_camera_fb_get();
+            if (fb) {
+                    esp_err_t err = esp_websocket_client_send_bin(client_handle, (const char *)fb->buf, fb->len, portMAX_DELAY);
+                    if (err == ESP_OK) {
+                        
+                    } else {
+                        ESP_LOGW(TAG, "Frame sautée, buffer plein ou réseau lent");
+                    }
+                
+                esp_camera_fb_return(fb);
+            } else {
+                ESP_LOGW(TAG, "Camera not ready");
             }
-            esp_camera_fb_return(fb);
-        } else {
-            ESP_LOGW(TAG, "Camera not ready");
         }
-        vTaskDelay(pdMS_TO_TICKS(50)); // ~20 FPS maximum
+        vTaskDelay(pdMS_TO_TICKS(50)); 
     }
 }
 
@@ -51,20 +51,19 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI(TAG, "WS: Connecté");
-            // const esp_timer_create_args_t timer_args = {
-            //     .callback = &send_heartbeat_ping,
-            //     .arg = (void*)client,
-            //     .name = "heartbeat"
-            // };
-            // esp_timer_create(&timer_args, &heartbeat_timer);
-            // esp_timer_start_periodic(heartbeat_timer, 5 * 1000000);
+            const esp_timer_create_args_t timer_args = {
+                .callback = &send_heartbeat_ping,
+                .arg = (void*)client,
+                .name = "heartbeat"
+            };
+            esp_timer_create(&timer_args, &heartbeat_timer);
+            esp_timer_start_periodic(heartbeat_timer, 5 * 1000000);
             break;
 
         case WEBSOCKET_EVENT_DATA:
             if (data->data_len > 0 && data->op_code == 0x01) {
                 ESP_LOGI(TAG, "WS: Données reçues (%d octets): %.*s", data->data_len, data->data_len, (char *)data->data_ptr);
 
-                // 1. Parser le message reçu
                 cJSON *root = cJSON_ParseWithLength((char *)data->data_ptr, data->data_len);
                 if (root == NULL) {
                     const char *error_ptr = cJSON_GetErrorPtr();
@@ -74,22 +73,20 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                     break; 
                 }
 
-                // 2. Extraire les champs
                 cJSON *type = cJSON_GetObjectItem(root, "type");
                 cJSON *content = cJSON_GetObjectItem(root, "data");
 
-                // 3. Logique de décision
-                if (cJSON_IsString(type) && strcmp(type->valuestring, "push") == 0) {
-                    if (cJSON_IsString(content) && strcmp(content->valuestring, "update firmware") == 0) {
+                if (cJSON_IsString(type) && strcmp(type->valuestring, "action") == 0) {
+                    if (cJSON_IsString(content) && strcmp(content->valuestring, "update_firmware") == 0) {
                         ESP_LOGW(TAG, "ORDRE OTA REÇU ! Lancement du service...");
-                        
-                        // Appel de la fonction définie dans ota_service.c
                         start_ota_update();
-                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "start camera") == 0) {
-                        
+                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "start_camera") == 0) {
+                        ESP_LOGI(TAG, "Démarrage du flux vidéo");
+                        if(!camera_state) { camera_state = true; }
 
-                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "stop camera") == 0) {
+                    } else if (cJSON_IsString(content) && strcmp(content->valuestring, "stop_camera") == 0) {
                         ESP_LOGI(TAG, "Arrêt du flux vidéo");
+                        camera_state = false;
                     }
                 }
 
@@ -120,7 +117,7 @@ void websocket_app_start(void) {
     char mac_id[13];
 
     get_mac_address(mac_id, sizeof(mac_id));
-    snprintf(full_url, sizeof(full_url), SERVER_WS_URL);
+    snprintf(full_url, sizeof(full_url), SERVER_WS_URL, mac_id);
 
     const esp_websocket_client_config_t ws_cfg = {
         .uri = full_url,
@@ -134,15 +131,6 @@ void websocket_app_start(void) {
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
     esp_websocket_client_start(client);
 
-
-    xTaskCreatePinnedToCore(
-        stream_task,    // Nom de la fonction
-        "stream_task",  // Nom pour le debug
-        4096,           // Taille de la pile (Stack size en octets)
-        (void*)client,           // Paramètres à passer
-        5,              // Priorité (5 est une priorité moyenne/haute)
-        NULL,            // Handle de la tâche (optionnel)
-        1
-    );
+    xTaskCreatePinnedToCore(stream_task, "stream_task", 4096, (void*)client, 5, NULL, 1);
 }
 

@@ -52,7 +52,7 @@ function App() {
 
     socket.current.onopen = () => {
       setIsConnected(true);
-      socket.current.send(JSON.stringify({ type: "get-clients" }));
+      socket.current.send(JSON.stringify({ type: "get_clients" }));
       addLog("Connecté en tant que : " + myId);
     };
 
@@ -68,7 +68,7 @@ function App() {
         const msg = JSON.parse(event.data);
         if (msg.type === "ping") return;
 
-        if (msg.type === "users-list") {
+        if (msg.type === "users") {
           setUsers(msg.users.filter(u => u !== myId));
         } else {
           addLog(`De [${msg.from}]: ${JSON.stringify(msg.data)}`);
@@ -146,15 +146,15 @@ function App() {
                 <h3>Flux Vidéo Temps Réel</h3>
                 <canvas ref={canvasRef} style={{ width: '100%', background: '#000', borderRadius: '5px' }} />
                 <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button onClick={() => sendCommand("push", "start camera")} style={{ background: '#27ae60', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Démarrer</button>
-                  <button onClick={() => sendCommand("push", "stop camera")} style={{ background: '#7f8c8d', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Arrêter</button>
+                  <button onClick={() => sendCommand("action", "start_camera")} style={{ background: '#27ae60', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Démarrer</button>
+                  <button onClick={() => sendCommand("action", "stop_camera")} style={{ background: '#7f8c8d', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', flex: 1 }}>Arrêter</button>
                 </div>
               </div>
 
               {/* Maintenance */}
               <div className="card" style={{ flex: '1', minWidth: '250px' }}>
                 <h3>Maintenance</h3>
-                <button onClick={() => sendCommand("push", "update firmware")} className="ota-btn">OTA Update</button>
+                <button onClick={() => sendCommand("action", "update_firmware")} className="ota-btn">OTA Update</button>
               </div>
             </div>
 

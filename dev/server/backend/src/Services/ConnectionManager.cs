@@ -42,4 +42,11 @@ public class ConnectionManager
     public IEnumerable<string> GetAllIds() => _clients.Keys;
 
     public WebSocket? GetClient(string id) => _clients.TryGetValue(id, out var socket) ? socket : null;
+
+    public IEnumerable<WebSocket> GetAllExcept(string exceptId)
+    {
+        return _clients
+            .Where(kv => kv.Key != exceptId)
+            .Select(kv => kv.Value);
+    }
 }

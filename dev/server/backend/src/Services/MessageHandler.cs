@@ -16,7 +16,7 @@ public class MessageHandler(ConnectionManager connectionManager)
 
             if (msg == null) return;
 
-            if (msg.Type == "get-clients")
+            if (msg.Type == "get_clients")
             {
                 await SendUserList(senderId);
             } else if (!string.IsNullOrEmpty(msg.To))
@@ -32,7 +32,7 @@ public class MessageHandler(ConnectionManager connectionManager)
         var socket = connectionManager.GetClient(clientId);
         if (socket == null) return;
 
-        var response = new { type = "users-list", users = connectionManager.GetAllIds() };
+        var response = new { type = "users", users = connectionManager.GetAllIds() };
         await SendJsonAsync(socket, response);
     }
 
@@ -51,38 +51,5 @@ public class MessageHandler(ConnectionManager connectionManager)
         var json = JsonSerializer.Serialize(data);
         var bytes = Encoding.UTF8.GetBytes(json);
         await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-    }
-
-    private int _imageCounter = 0;
-    private const int SaveInterval = 5;
-
-    public async Task ForwardBinaryAsync(string senderId, byte[] data, int count)
-    {
-        try 
-        {
-            _imageCounter++;
-
-
-            // 2. Relais vers React (toujours actif pour le temps réel)
-            foreach (var targetId in connectionManager.GetAllIds())
-            {
-                if (targetId == senderId) continue;
-
-                var targetSocket = connectionManager.GetClient(targetId);
-                if (targetSocket != null && targetSocket.State == WebSocketState.Open)
-                {
-                    // On envoie le segment exact reçu pour ne pas envoyer de données vides
-                    await targetSocket.SendAsync(
-                        new ArraySegment<byte>(data, 0, count), 
-                        WebSocketMessageType.Binary, 
-                        true, 
-                        CancellationToken.None);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Error] {ex.Message}");
-        }
     }
 }
