@@ -1,0 +1,52 @@
+.app-container {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.control-panel {
+  flex: 1;
+  background-color: var(--bg-light);
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.panel-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.actions-section {
+  display: grid;
+  grid-template-columns: 1fr 380px; 
+  gap: 20px;
+  align-items: start;
+}
+
+.main-view, .side-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.highlight {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.no-target {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@media (max-width: 1100px) {
+  .actions-section {
+    grid-template-columns: 1fr;
+  }
+}

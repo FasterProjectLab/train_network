@@ -1,22 +1,87 @@
 #ifndef MAIN_CONFIG_H
 #define MAIN_CONFIG_H
 
-#include "esp_log.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+#include "esp_websocket_client.h"
+#include "cJSON.h"
+#include "esp_log.h"
+#include <stdbool.h>
+
+// ===== NETWORK CONFIGURATION =====
 #define WIFI_SSID      "train_network"
 #define WIFI_PASS      "password123"
-#define SERVER_WS_URL  "ws://192.168.10.1:8080/ws/%s"
-#define FIRMWARE_URL   "https://192.168.10.1/firmware.bin"
+/** * @brief WebSocket Server URL template. 
+ * %s will be replaced by the device MAC address. 
+ */
+#define SERVER_WS_URL  "ws://192.168.10.1:8080/ws/%s?type=train"
 
-static const char *TAG = "ESP32_APP";
+/** @brief Global logging tag for the application */
+static const char *TAG = "ESP32_TRAIN_APP";
 
-// Prototypes pour lier les fichiers
+// ===== SYSTEM & OTA =====
+/** @brief Starts the Wi-Fi station mode */
 void wifi_init_sta(void);
-void websocket_app_start(void);
-void start_ota_update(void);
+
+/** @brief Triggers an HTTPS OTA update from the specified URL */
+void start_ota_update(const char* url);
+
+// ===== CAMERA SERVICE =====
+/** @brief Initializes the camera hardware */
 esp_err_t camera_init_service(void);
 
-esp_err_t perf_monitor_start(uint32_t interval_ms);
-void perf_monitor_stop();
+/** @brief Starts or stops the camera data capture */
+void camera_set_enabled(bool state);
 
+/** @brief Initializes the camera internal task/queue */
+void camera_task_init(void);
+
+/** @brief Updates camera sensor parameters (brightness, contrast, etc.) */
+void camera_service_update_settings(const char* variable, int value);
+
+/** @brief Generates a unique SSRC ID based on the hardware MAC address */
+uint32_t generate_ssrc_from_mac(void);
+
+// ===== TELEMETRY SERVICE =====
+/** @brief Initializes the periodic telemetry system */
+esp_err_t telemetry_task_init(uint32_t interval_ms, esp_websocket_client_handle_t client);
+
+/** @brief Enables or disables the telemetry heartbeat */
+void telemetry_set_enabled(bool state);
+
+// ===== MOTOR CONTROL SERVICE =====
+/** @brief Configures PWM timers and GPIOs for motor control */
+void motor_service_init(void);
+
+/** @brief Sets motor speed (0-100%) and direction */
+void motor_service_set_speed(uint8_t duty, bool forward);
+
+/** @brief Immediate motor stop */
+void motor_service_stop(void);
+
+/** @brief Returns true if current set direction is forward */
+bool motor_get_current_direction(void);
+
+// ===== LIGHTING SERVICE =====
+/** @brief Configures GPIOs for the lighting system */
+void light_service_init(void);
+
+/** @brief Sets the state of front/rear white and red LEDs */
+void light_service_set(bool white_front, bool red_front, bool white_rear, bool red_rear);
+
+// ===== WEBSOCKET APPLICATION =====
+/** @brief Starts the WebSocket client task */
+void websocket_app_start(void);
+
+/** * @brief Sends a formatted JSON message over WebSocket
+ * @param payload The cJSON object to send (function takes ownership and will delete it)
+ */
+void send_ws_envelope(esp_websocket_client_handle_t client, const char* type, const char* target, cJSON* payload);
+
+#ifdef __cplusplus
+}
 #endif
+
+#endif // MAIN_CONFIG_H

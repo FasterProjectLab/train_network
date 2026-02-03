@@ -1,0 +1,45 @@
+@startuml
+skinparam Style strictuml
+skinparam SequenceMessageAlignment center
+
+actor "Train (Client)" as Train
+participant "WebSocket Handler" as WS
+participant "ConnectionManager" as CM
+participant "UdpReceiverService" as UDP
+participant "VideoBroadcastService" as Broadcast
+actor "Utilisateur (Navigateur)" as User
+
+== 1. Initialisation & Enregistrement ==
+
+Train -> WS: Connexion WS (/ws/T1?type=train)
+WS -> CM: AddClient(T1, Session_ABC)
+Train -> WS: JSON { "type": "register_ssrc", "ssrc": 12345 }
+WS -> CM: RegisterSessionSsrc(Session_ABC, 12345)
+note right of CM: Map SSRC 12345 -> Train T1
+
+== 2. Abonnement Utilisateur ==
+
+User -> Broadcast: GET /video/T1
+Broadcast -> CM: Vérifier si T1 existe
+User -> Broadcast: Ouverture flux (multipart/x-mixed-replace)
+
+== 3. Flux Vidéo (Temps Réel) ==
+
+loop Transmission des images
+    Train -> UDP: Paquets RTP (UDP 5004) [SSRC: 12345]
+    UDP -> UDP: Réassemblage de l'image (Marker Bit)
+    UDP -> CM: GetTrainIdBySsrc(12345)
+    CM --> UDP: Retourne "T1"
+    UDP -> Broadcast: DispatchFrame("T1", byte[] data)
+    Broadcast -> User: Envoi du segment JPEG (--frame)
+end
+
+== 4. Déconnexion ==
+
+User -> Broadcast: Ferme la page
+Broadcast -> CM: Unsubscribe / Nettoyage Channel
+
+Train -> WS: Close WebSocket
+WS -> CM: RemoveClient(Session_ABC)
+CM -> CM: Révocation SSRC 12345
+@endum

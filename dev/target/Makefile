@@ -1,4 +1,6 @@
 
+enter_idf_without_usb:
+	docker run -it --rm -v $(PWD)/:/appli -w /appli espressif/idf:release-v5.1 /bin/bash 
 
 enter_idf:
 	docker run -it --device=/dev/ttyUSB0 --rm -v $(PWD)/:/appli -w /appli espressif/idf:release-v5.1 /bin/bash 

@@ -1,0 +1,17 @@
+@startuml
+title Système (Update & Reboot)
+participant "UI (React)" as UI
+participant "Backend" as Server
+participant "ESP32" as ESP
+
+== Mise à jour (OTA) ==
+UI -> Server: { "action": "OTA_UPDATE", "url": "..." }
+Server -> ESP: { "cmd": "UPDATE_FIRMWARE", "src": "http://..." }
+ESP -> Server: { "type": "LOG", "msg": "Downloading 15%..." }
+
+== Reboot Software ==
+UI -> Server: { "action": "REBOOT" }
+Server -> ESP: { "cmd": "SYS_REBOOT" }
+ESP -> Server: { "type": "LOG", "msg": "Rebooting now..." }
+Server -> Server: Close Socket T1
+@enduml

@@ -1,0 +1,139 @@
+
+
+.telemetry-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 1.5rem !important; 
+}
+
+.telemetry-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.telemetry-card h3 {
+  font-size: 1.1rem;
+  color: var(--primary);
+  letter-spacing: 0.5px;
+}
+
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.telemetry-group {
+  background: #f8f9fa;
+  border-left: 3px solid var(--secondary);
+  padding: 12px;
+  border-radius: 4px;
+  transition: transform 0.2s ease;
+}
+
+.telemetry-group:hover {
+  transform: translateX(4px);
+  background: #f0f2f5;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.stat-row:last-child {
+  margin-bottom: 0;
+}
+
+.stat-row span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.stat-row strong {
+  font-family: 'Consolas', 'Monaco', monospace; 
+  font-size: 1rem;
+  color: var(--text-main);
+}
+
+.text-danger {
+  color: #ff4757 !important;
+  animation: pulse 1s infinite;
+}
+
+.status-indicator {
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.status-indicator.online {
+  background: #e1f5fe;
+  color: var(--secondary);
+}
+
+.status-indicator.offline {
+  background: #eee;
+  color: #999;
+}
+
+.telemetry-controls {
+  margin-top: 10px;
+}
+
+.btn-start-telemetry {
+  composes: btn-primary; 
+}
+
+.btn-stop-telemetry {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background-color: transparent;
+  color: #ff4757;
+  border: 1.5px solid #ff4757;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-stop-telemetry:hover {
+  background-color: #ff4757;
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 71, 87, 0.2);
+}
+
+.telemetry-idle {
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #fafafa;
+  border: 1px dashed #ddd;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}

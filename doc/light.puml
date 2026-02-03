@@ -1,0 +1,15 @@
+@startuml
+title Éclairage (Phares)
+participant "UI (React)" as UI
+participant "Backend" as Server
+participant "ESP32" as ESP
+
+== État Permanent ==
+UI -> Server: { "action": "HEADLIGHTS", "state": "ON" }
+Server -> ESP: { "cmd": "LIGHT", "power": 1 }
+
+== Appel de Phares ==
+UI -> Server: { "action": "FLASH_LIGHTS" }
+Server -> ESP: { "cmd": "BLINK", "pattern": "SHORT_3" }
+note right of ESP: L'ESP gère le timing du clignotement\nen local pour éviter la latence réseau.
+@enduml

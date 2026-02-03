@@ -1,0 +1,28 @@
+.login-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 12px 15px;
+  margin: 1.5rem 0 1.2rem;
+  border: 2px solid #eee;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.login-card input:focus {
+  outline: none;
+  border-color: var(--primary);
+}

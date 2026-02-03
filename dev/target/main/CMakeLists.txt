@@ -4,7 +4,9 @@ set(srcs
     "ws_service.c" 
     "ota_service.c"
     "camera_service.c"
-    "monitor_service.c")
+    "telemetry_service.c"
+    "motor_service.c"
+    "light_service.c")
 
 idf_component_register(
     SRCS ${srcs}

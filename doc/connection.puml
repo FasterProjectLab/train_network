@@ -1,0 +1,64 @@
+@startuml
+title Structure des données de Connexion (Handshake)
+
+participant "ESP32 (Train)" as ESP
+participant "Backend (.NET)" as Server
+participant "Frontend (User)" as UI
+
+note over ESP, UI: Ouverture Socket: /ws/{id}?type={train|user}
+
+== Connexion du Train (T1) ==
+ESP -> Server: MessageEnvelope { "type": "conn", "source": "T1", ... }
+note right
+{
+  "type": "conn",
+  "source": "T1",
+  "target": "server",
+  "payload": {
+    "device": "ESP32-S3",
+    "capabilities": ["camera", "motor"]
+  },
+  "timestamp": 1770930000
+}
+end note
+
+Server -> Server: ConnectionManager.AddClient("T1", "train")
+
+Server -->> ESP: MessageEnvelope { "type": "conn_ack", ... }
+note left
+{
+  "type": "conn_ack",
+  "source": "server",
+  "target": "T1",
+  "payload": { "status": "ready", "msg": "Welcome T1" },
+  "timestamp": 1770930001
+}
+end note
+
+== Connexion de l'Utilisateur (Admin) ==
+UI -> Server: MessageEnvelope { "type": "conn", "source": "monitor", ... }
+note left
+{
+  "type": "conn",
+  "source": "monitor",
+  "target": "server",
+  "payload": { "role": "admin" },
+  "timestamp": 1770930100
+}
+end note
+
+Server -> Server: ConnectionManager.AddClient("monitor", "user")
+
+Server -->> UI: MessageEnvelope { "type": "conn_ack", ... }
+note right
+{
+  "type": "conn_ack",
+  "source": "server",
+  "target": "monitor",
+  "payload": {
+    "active_trains": ["T1"]
+  },
+  "timestamp": 1770930101
+}
+end note
+@enduml

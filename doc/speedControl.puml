@@ -1,0 +1,12 @@
+@startuml
+title Modification de la Vitesse
+participant "UI (React)" as UI
+participant "Backend" as Server
+participant "ESP32" as ESP
+
+UI -> Server: { "action": "SET_SPEED", "value": 45, "target": "T1" }
+Server -> ESP: { "cmd": "SPEED", "val": 45 }
+ESP -> ESP: Ajuster PWM Moteur
+ESP -> Server: { "type": "LOG", "msg": "Vitesse ajustée à 45" }
+Server -> UI: Relay Log / Update UI
+@enduml

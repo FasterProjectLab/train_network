@@ -1,0 +1,10 @@
+@startuml
+title Système de Logs
+participant "ESP32" as ESP
+participant "Backend" as Server
+participant "UI (React)" as UI
+
+ESP -> Server: { "type": "LOG", "level": "DEBUG", "msg": "Sensor I2C OK" }
+Server -> Server: Écriture base de données / Fichier
+Server -> UI: Broadcast Log (si console ouverte)
+@enduml

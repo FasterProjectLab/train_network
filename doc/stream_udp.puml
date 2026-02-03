@@ -1,0 +1,45 @@
+@startuml
+skinparam handwritten false
+skinparam packageStyle rect
+skinparam defaultFontName Arial
+
+title Architecture Flux Vidéo Multi-Trains (SSRC via MAC)
+
+node "ESP32-S3 Train A" as espA {
+    component "Calcul SSRC (MAC)" as calcA
+    component "Streamer RTP (Port 5004)" as rtpA
+}
+
+node "ESP32-S3 Train B" as espB {
+    component "Calcul SSRC (MAC)" as calcB
+    component "Streamer RTP (Port 5004)" as rtpB
+}
+
+cloud "Réseau Local (UDP 5004)" as network
+
+node "Serveur C# (.NET Core)" as server {
+    control "UDP Listener" as listener
+    database "ConnectionManager" as mgr
+    control "VideoStreamDispatcher" as dispatcher
+}
+
+node "Navigateur Client (Viewer)" as client
+
+'--- FLUX D'ENREGISTREMENT ---
+espA -.> mgr : 1. WebSocket: "Je suis Train_01, mon SSRC est X"
+espB -.> mgr : 1. WebSocket: "Je suis Train_02, mon SSRC est Y"
+
+'--- FLUX VIDÉO ---
+rtpA ==> network : Paquets RTP (SSRC=X)
+rtpB ==> network : Paquets RTP (SSRC=Y)
+
+network ==> listener : Flux mélangé sur port 5004
+
+listener -> dispatcher : Transmet chaque paquet
+dispatcher -> mgr : "Qui est le SSRC X ?"
+mgr -> dispatcher : "C'est Train_01"
+
+'--- DIFFUSION ---
+client <- dispatcher : HTTP Stream /video/Train_01\n(Envoie uniquement SSRC X)
+
+@enduml
