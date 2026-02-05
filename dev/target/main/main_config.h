@@ -17,6 +17,12 @@ extern "C" {
  * %s will be replaced by the device MAC address. 
  */
 #define SERVER_WS_URL  "ws://192.168.10.1:8080/ws/%s?type=train"
+#define FIRMWARE_URL   "https://192.168.10.1/firmware.bin"
+// Easily configurable pins
+#define I2C_SDA_PIN         21
+#define I2C_SCL_PIN         47
+#define I2C_PORT            0
+#define I2C_FREQ_HZ         100000
 
 /** @brief Global logging tag for the application */
 static const char *TAG = "ESP32_TRAIN_APP";
@@ -97,8 +103,14 @@ void send_ws_envelope(esp_websocket_client_handle_t client, const char* type, co
  */
 void update_light_by_current_dir();
 
+void i2c_service_init(void);
+void i2c_service_scan(void);
+esp_err_t i2c_service_write(uint8_t dev_addr, uint8_t *data, size_t len);
+esp_err_t i2c_service_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, size_t len);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // MAIN_CONFIG_H
+

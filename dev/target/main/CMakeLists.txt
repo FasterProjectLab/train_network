@@ -6,13 +6,19 @@ set(srcs
     "camera_service.c"
     "telemetry_service.c"
     "motor_service.c"
-    "light_service.c")
+    "light_service.c"
+    "monitor_service.c"
+    "i2c_service.c")
 
 idf_component_register(
     SRCS ${srcs}
     INCLUDE_DIRS "."
     EMBED_TXTFILES "./server_cert.pem"
     # Liste exhaustive des dépendances nécessaires :
+    REQUIRES 
+        esp_driver_i2c
+        esp32-camera
+        esp_http_server
     PRIV_REQUIRES 
         nvs_flash           # Pour nvs_flash.h
         esp_wifi            # Pour esp_wifi.h
@@ -24,6 +30,4 @@ idf_component_register(
         json                # Pour cJSON.h
         esp_partition       # Pour la gestion des partitions
         app_update          # Pour la validation du nouveau firmware
-        esp32-camera
-        esp_http_server
 )
