@@ -8,6 +8,8 @@
 
 #define PN532_ADDR 0x24
 
+typedef void (*nfc_tag_callback_t)(uint8_t *uid, uint8_t len);
+
 esp_err_t nfc_send_command(uint8_t *cmd, size_t cmd_len) {
     uint8_t packet[cmd_len + 8];
     uint8_t len = cmd_len + 1;
@@ -27,95 +29,150 @@ esp_err_t nfc_send_command(uint8_t *cmd, size_t cmd_len) {
     return i2c_service_write(PN532_ADDR, packet, sizeof(packet));
 }
 
-esp_err_t nfc_read_tag_uid(uint8_t *uid_out, uint8_t *uid_len) {
-    uint8_t buffer[64] = {0};
-    
-    // 1. Première lecture pour voir si le module a quelque chose
-    if (i2c_service_receive(PN532_ADDR, buffer, sizeof(buffer)) != ESP_OK) return ESP_FAIL;
+esp_err_t nfc_check_ack(void) {
+    uint8_t ack_buf[7]; // Statut (1) + ACK (6)
+    if (i2c_service_receive(PN532_ADDR, ack_buf, sizeof(ack_buf)) != ESP_OK) return ESP_FAIL;
 
-    // 2. Si on reçoit un ACK (00 00 FF 00 FF 00), on doit lire à nouveau pour la DATA
-    if (buffer[1] == 0x00 && buffer[2] == 0x00 && buffer[3] == 0xFF) {
-        // Laisser le temps au scan RF de finir (important pour ISO14443-3A)
-        vTaskDelay(pdMS_TO_TICKS(30)); 
-        if (i2c_service_receive(PN532_ADDR, buffer, sizeof(buffer)) != ESP_OK) return ESP_FAIL;
+    //ESP_LOGI("NFC_ACK", "Trame ACK reçue: %02x %02x %02x %02x %02x %02x %02x",
+    //         ack_buf[0], ack_buf[1], ack_buf[2], ack_buf[3], ack_buf[4], ack_buf[5], ack_buf[6]);
+    
+    // Un ACK valide est toujours : 00 00 FF 00 FF 00
+    const uint8_t expected_ack[] = {0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00};
+    if (memcmp(&ack_buf[1], expected_ack, 6) == 0) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        return ESP_OK;
     }
 
-    // 3. Vérifier le Ready Bit (0x01)
-    if (buffer[0] != 0x01) return ESP_ERR_NOT_FINISHED;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    return ESP_ERR_INVALID_RESPONSE;
+}
 
-    // 4. Chercher la signature de réponse InListPassiveTarget (D5 4B)
-    for (int i = 1; i < sizeof(buffer) - 10; i++) {
+esp_err_t nfc_sam_config(void) {
+    uint8_t sam_cmd[] = { 0x14, 0x01, 0x14, 0x01 };
+    ESP_LOGI("NFC", "Configuration du SAM...");
+    
+    esp_err_t ret = nfc_send_command(sam_cmd, 4);
+    if (ret != ESP_OK) return ret;
+
+    vTaskDelay(pdMS_TO_TICKS(10)); // Petit délai pour laisser le PN532 répondre
+    if (nfc_check_ack() == ESP_OK) {
+        ESP_LOGI("NFC", "SAM Config : ACK reçu !");
+        vTaskDelay(pdMS_TO_TICKS(100));
+        return ESP_OK;
+    }
+
+    ESP_LOGE("NFC", "SAM Config : Pas d'ACK !");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    return ESP_FAIL;
+}
+
+esp_err_t nfc_soft_reset(void) {
+    // Trame de réveil / Reset
+    uint8_t reset_cmd[] = { 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00 }; 
+    ESP_LOGW("NFC", "Reset du module...");
+
+    // 1. Envoi
+    esp_err_t ret = i2c_service_write(PN532_ADDR, reset_cmd, sizeof(reset_cmd));
+    if (ret != ESP_OK) return ret;
+
+    // 2. Vérification de l'ACK (Le module l'envoie avant de rebooter)
+    vTaskDelay(pdMS_TO_TICKS(10));
+    if (nfc_check_ack() == ESP_OK) {
+        ESP_LOGI("NFC", "Reset : ACK reçu !");
+        vTaskDelay(pdMS_TO_TICKS(100)); // Pause nécessaire pour le reboot interne
+        return ESP_OK;
+    } else {
+        ESP_LOGE("NFC", "Reset : Échec (Pas d'ACK)");
+        return ESP_FAIL;
+    }
+}
+
+#define PN532_OFFSET_NBTG       2
+#define PN532_OFFSET_UID_LEN    7
+#define PN532_OFFSET_UID_START  8
+#define NFC_MAX_UID_LEN  10  // La norme ISO max
+
+esp_err_t nfc_parse_passive_target(uint8_t *buffer, size_t len, uint8_t *uid_out, uint8_t *uid_len_out) {
+    for (int i = 0; i < (int)len - 1; i++) {
         if (buffer[i] == 0xD5 && buffer[i+1] == 0x4B) {
-            uint8_t nb_tags = buffer[i+2];
+
+            // Read tag number
+            if (i + PN532_OFFSET_NBTG >= len) { return ESP_ERR_INVALID_SIZE; }
+            uint8_t nb_tags = buffer[i + PN532_OFFSET_NBTG];
+            
             if (nb_tags > 0) {
-                *uid_len = buffer[i+6]; // Offset de l'UID dans la trame 0x4B
-                memcpy(uid_out, &buffer[i+7], *uid_len);
+                // Read UID lenght
+                if (i + PN532_OFFSET_UID_LEN >= len) { return ESP_ERR_INVALID_SIZE; }
+                uint8_t actual_uid_len = buffer[i + PN532_OFFSET_UID_LEN];
+
+                // Read UID data
+                int uid_start_index = i + PN532_OFFSET_UID_START;
+                if (uid_start_index + actual_uid_len > len) { return ESP_ERR_INVALID_SIZE; }
+                if (actual_uid_len == 0 || actual_uid_len > NFC_MAX_UID_LEN) { return ESP_ERR_INVALID_ARG; }
+
+                *uid_len_out = actual_uid_len;
+                memcpy(uid_out, &buffer[uid_start_index], actual_uid_len);
+                
+                
                 return ESP_OK;
             }
+            
         }
     }
     return ESP_ERR_NOT_FOUND;
 }
 
-void nfc_polling_task(void *pvParameters) {
-    uint8_t buffer[64];
-    uint8_t ack_buffer[12]; // 12 octets suffisent largement pour un ACK
+esp_err_t nfc_scan_tag(nfc_tag_callback_t cb) {
+    uint8_t buffer[32];
+    uint8_t uid[10];
+    uint8_t uid_len = 0;
+    uint8_t detect_cmd[] = { 0x4A, 0x01, 0x00 };
+
+
+    ESP_LOGI("NFC", "Demande de scan");
+    if (nfc_send_command(detect_cmd, 3) != ESP_OK) return ESP_FAIL;
+
+    vTaskDelay(pdMS_TO_TICKS(10)); 
+    if (nfc_check_ack() != ESP_OK) {
+        return ESP_FAIL;
+    }
+    ESP_LOGI("NFC", "Demande de scan: OK");
+    vTaskDelay(pdMS_TO_TICKS(150)); 
+
+    memset(buffer, 0, sizeof(buffer));
+    if (i2c_service_receive(PN532_ADDR, buffer, sizeof(buffer)) == ESP_OK) {
+        ESP_LOG_BUFFER_HEX("I2C_RX_RAW", buffer, 32);
+        if (nfc_parse_passive_target(buffer, sizeof(buffer), uid, &uid_len) == ESP_OK) {
+            
+            if (cb != NULL) {
+                cb(uid, uid_len);
+            }
+            return ESP_OK;
+        }
+    }
     
-    // Commande SAMConfig (pour réveiller la puce)
-    uint8_t sam_cmd[] = { 0x14, 0x01, 0x14, 0x01 };
-    nfc_send_command(sam_cmd, 4);
+    return ESP_ERR_NOT_FOUND;
+}
 
-    // Délai très court : le PN532 génère l'ACK presque instantanément
-    vTaskDelay(pdMS_TO_TICKS(20)); 
-
-    // Lecture brute
-    memset(ack_buffer, 0, sizeof(ack_buffer));
-    if (i2c_service_receive(PN532_ADDR, ack_buffer, sizeof(ack_buffer)) == ESP_OK) {
-        // ON VEUT VOIR : 01 00 00 FF 00 FF 00
-        ESP_LOG_BUFFER_HEX("NFC_RAW_ACK", ack_buffer, sizeof(ack_buffer));
-    } else {
-        ESP_LOGE("NFC_STEP", "Erreur de lecture I2C");
+void on_tag_detected(uint8_t *uid, uint8_t len) {
+    char uid_str[31] = {0}; 
+    for (int i = 0; i < len; i++) {
+        sprintf(&uid_str[i * 3], "%02X ", uid[i]);
     }
 
-    while (1) {
-        ESP_LOGI("NFC_STEP", "Envoi commande...");
-        
-        uint8_t detect_cmd[] = { 0x4A, 0x01, 0x00 };
-        ESP_LOGI("NFC_STEP", "Scan du tag...");
-        nfc_send_command(detect_cmd, 3);
+    // 2. Log d'information
+    ESP_LOGI("NFC_CALLBACK", "Tag détecté ! Taille: %d, UID: %s", len, uid_str);
+}
 
-        vTaskDelay(pdMS_TO_TICKS(150));
+void nfc_polling_task(void *pvParameters) {
 
-        memset(buffer, 0, sizeof(buffer));
+    if (nfc_sam_config() != ESP_OK) {
+        ESP_LOGE("NFC", "Échec de la configuration SAM");
+    }
 
-        if (i2c_service_receive(PN532_ADDR, buffer, sizeof(buffer)) == ESP_OK) {
-
-            ESP_LOG_BUFFER_HEX("I2C_RX_RAW", buffer, 32);
-            
-            // On cherche la signature D5 4B dans toute la trame
-            bool tag_found = false;
-            for (int i = 0; i < sizeof(buffer) - 5; i++) {
-                if (buffer[i] == 0xD5 && buffer[i+1] == 0x4B) {
-                    tag_found = true;
-                    uint8_t uid_len = buffer[i+6];
-                    ESP_LOGI("NFC_SUCCESS", "TAG DETECTÉ ! UID Longueur: %d", uid_len);
-                    esp_log_buffer_hex("NFC_UID_VAL", &buffer[i+7], uid_len);
-                    break;
-                }
-            }
-
-            if (!tag_found) {
-                // Si on ne voit que l'ACK (00 00 FF 00 FF 00), c'est qu'aucun tag n'est présent
-                ESP_LOGD("NFC_STEP", "Rien sur l'antenne...");
-            } else {
-                // Si on a trouvé un tag, on attend un peu plus avant le prochain scan
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
-        }
-        
-
-        ESP_LOGI("NFC_STEP", "end");
-        vTaskDelay(pdMS_TO_TICKS(2000)); // On recommence toutes les 2 secondes
+    while (true) {
+        nfc_scan_tag(on_tag_detected);
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
 
