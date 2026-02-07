@@ -9,7 +9,7 @@ set(srcs
     "light_service.c"
     "monitor_service.c"
     "i2c_service.c"
-    "nfc_service.c")
+    "nfc_service/nfc_service.c")
 
 idf_component_register(
     SRCS ${srcs}

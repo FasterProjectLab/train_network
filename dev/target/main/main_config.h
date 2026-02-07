@@ -110,7 +110,7 @@ esp_err_t i2c_service_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, si
 esp_err_t i2c_service_receive(uint8_t dev_addr, uint8_t *data, size_t len);
 
 // Function prototypes
-void nfc_service_init(void);
+esp_err_t nfc_service_init(void);
 
 #ifdef __cplusplus
 }
