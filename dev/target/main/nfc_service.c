@@ -87,6 +87,48 @@ esp_err_t nfc_soft_reset(void) {
     }
 }
 
+esp_err_t nfc_read_single_page(uint8_t page, uint8_t *data_out) {
+    // Commande PN532 : DataExchange (0x40), Target 1 (0x01), Authentification/Read (0x30), Numéro de page
+    uint8_t read_cmd[] = {0x40, 0x01, 0x30, page};
+    uint8_t rx[25]; // Buffer suffisant pour header + 4 octets de data + checksum
+
+    // 1. Envoi de la requête de lecture
+    if (nfc_send_command(read_cmd, sizeof(read_cmd)) != ESP_OK) return ESP_FAIL;
+
+    vTaskDelay(pdMS_TO_TICKS(5)); 
+    if (nfc_check_ack() != ESP_OK) {
+        ESP_LOGW("NFC_READ", "ACK non reçu pour la lecture page %d", page);
+        return ESP_FAIL;
+    }
+
+    // 2. Petit délai pour laisser le PN532 discuter avec le tag par radio
+    // 15ms est un bon compromis pour le train Lego
+    vTaskDelay(pdMS_TO_TICKS(25));
+
+    // 3. Récupération de la réponse
+    if (i2c_service_receive(PN532_ADDR, rx, sizeof(rx)) == ESP_OK) {
+        
+        // On cherche la signature de réponse DataExchange : D5 41
+        for (int i = 0; i < (int)sizeof(rx) - 10; i++) {
+            if (rx[i] == 0xD5 && rx[i+1] == 0x41) {
+                
+                // Le 3ème octet après D5 est le statut (0x00 = succès)
+                uint8_t status = rx[i+2];
+                if (status != 0x00) {
+                    ESP_LOGW("NFC_READ", "Erreur lecture page %d (Status: 0x%02X)", page, status);
+                    return ESP_FAIL;
+                }
+
+                // Les 4 octets de la page commencent juste après le statut
+                memcpy(data_out, &rx[i+3], 4);
+                return ESP_OK;
+            }
+        }
+    }
+
+    return ESP_ERR_NOT_FOUND;
+}
+
 #define PN532_OFFSET_NBTG       2
 #define PN532_OFFSET_UID_LEN    7
 #define PN532_OFFSET_UID_START  8
@@ -128,20 +170,18 @@ esp_err_t nfc_scan_tag(nfc_tag_callback_t cb) {
     uint8_t uid_len = 0;
     uint8_t detect_cmd[] = { 0x4A, 0x01, 0x00 };
 
-
-    ESP_LOGI("NFC", "Demande de scan");
     if (nfc_send_command(detect_cmd, 3) != ESP_OK) return ESP_FAIL;
 
     vTaskDelay(pdMS_TO_TICKS(10)); 
     if (nfc_check_ack() != ESP_OK) {
         return ESP_FAIL;
     }
-    ESP_LOGI("NFC", "Demande de scan: OK");
+
     vTaskDelay(pdMS_TO_TICKS(150)); 
 
     memset(buffer, 0, sizeof(buffer));
     if (i2c_service_receive(PN532_ADDR, buffer, sizeof(buffer)) == ESP_OK) {
-        ESP_LOG_BUFFER_HEX("I2C_RX_RAW", buffer, 32);
+        // ESP_LOG_BUFFER_HEX("I2C_RX_RAW", buffer, 32);
         if (nfc_parse_passive_target(buffer, sizeof(buffer), uid, &uid_len) == ESP_OK) {
             
             if (cb != NULL) {
@@ -162,10 +202,28 @@ void on_tag_detected(uint8_t *uid, uint8_t len) {
 
     // 2. Log d'information
     ESP_LOGI("NFC_CALLBACK", "Tag détecté ! Taille: %d, UID: %s", len, uid_str);
+
+    uint8_t data[4];
+    for (int p = 0; p < 10; p++) { // On teste les 10 premières pages
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if (nfc_read_single_page(p, data) == ESP_OK) {
+            ESP_LOGI("NFC_DUMP", "Page %02d : %02X %02X %02X %02X", p, data[0], data[1], data[2], data[3]);
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(20));
+            if (nfc_read_single_page(p, data) == ESP_OK) {
+                ESP_LOGI("NFC_DUMP", "Page %02d (Retry) : %02X %02X %02X %02X", p, data[0], data[1], data[2], data[3]);
+            } else {
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10)); // Petit repos pour le bus
+    }
 }
 
 void nfc_polling_task(void *pvParameters) {
 
+    nfc_soft_reset();
+    
     if (nfc_sam_config() != ESP_OK) {
         ESP_LOGE("NFC", "Échec de la configuration SAM");
     }
