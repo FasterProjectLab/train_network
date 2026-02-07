@@ -75,3 +75,18 @@ esp_err_t i2c_service_read(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, si
     i2c_master_bus_rm_device(dev_handle);
     return ret;
 }
+
+esp_err_t i2c_service_receive(uint8_t dev_addr, uint8_t *data, size_t len) {
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = dev_addr,
+        .scl_speed_hz = I2C_FREQ_HZ,
+    };
+    i2c_master_dev_handle_t dev_handle;
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
+
+    esp_err_t ret = i2c_master_receive(dev_handle, data, len, 1000);
+
+    i2c_master_bus_rm_device(dev_handle);
+    return ret;
+}

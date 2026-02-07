@@ -28,7 +28,10 @@ void app_main(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     
     i2c_service_init();
+
     i2c_service_scan();
+
+    nfc_service_init();
 
     perf_monitor_start(20000);
 
