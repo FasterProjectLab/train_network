@@ -108,7 +108,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
             ESP_LOGW(TAG, "WebSocket: Disconnected");
             websocket_stop_heartbeat();
             camera_set_enabled(false);
-            telemetry_set_enabled(false);
+            telemetry_set_enabled(false, NULL);
             break;
 
         default:
@@ -142,10 +142,10 @@ static void process_incoming_message(const char *data, size_t len) {
             handle_camera_control(payload);
         }
         else if (strcmp(type_str, "telemetry_start") == 0) {
-            telemetry_set_enabled(true);
+            telemetry_set_enabled(true, payload);
         }
         else if (strcmp(type_str, "telemetry_stop") == 0) {
-            telemetry_set_enabled(false);
+            telemetry_set_enabled(false, NULL);
         }
         else if (strcmp(type_str, "system") == 0) {
             handle_system_command(payload);
@@ -184,6 +184,7 @@ static void handle_motor_command(cJSON *payload) {
             ESP_LOGI(TAG, "Motor: Speed %d, Dir: %s", speed_val, forward ? "FWD" : "REV");
         } else {
             motor_service_stop();
+            motor_set_direction(forward);
         }
     }
 }
@@ -199,13 +200,21 @@ static void handle_light_command(cJSON *payload) {
 
     if (strcmp(status_item->valuestring, "ON") == 0) {
         // Logic depends on current motor direction
-        if (motor_get_current_direction()) {
-            light_service_set(false, false, true, true);
-        } else {
-            light_service_set(true, true, false, false);
-        }
+        update_light_by_current_dir();
     } else {
         light_service_set(false, false, false, false);
+    }
+}
+
+/** * @brief Automatically updates lights based on the motor's current direction.
+ * * Switches between front and rear lighting sets (e.g., white at the front, 
+ * red at the rear) depending on whether the motor is in forward or reverse.
+ */
+void update_light_by_current_dir() {
+    if (motor_get_current_direction()) {
+        light_service_set(false, false, true, true);
+    } else {
+        light_service_set(true, true, false, false);
     }
 }
 

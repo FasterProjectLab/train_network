@@ -112,7 +112,7 @@ public class MessageHandler
         switch (env.Type)
         {
             case ProtocolConstants.ActionSubscribe: 
-                string? tag = env.Payload?.ToString()?.ToLower();
+                string? tag = env.Tag?.ToString()?.ToLower();
                 if (string.IsNullOrEmpty(tag)) return;
                             
                 var alreadyHasViewers = _mgr.GetSubscribers(env.Target, tag).Any();
@@ -121,7 +121,7 @@ public class MessageHandler
                 // Optimization: Tell the train to start its hardware stream ONLY if this is the first subscriber
                 if (!alreadyHasViewers)
                 {
-                    await SendControlToTrain(env.Target, $"{tag}_start");
+                    await SendControlToTrain(env.Target, $"{tag}_start", env.Payload);
                 }
                 break;
 

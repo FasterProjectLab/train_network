@@ -49,7 +49,7 @@ uint32_t generate_ssrc_from_mac(void);
 esp_err_t telemetry_task_init(uint32_t interval_ms, esp_websocket_client_handle_t client);
 
 /** @brief Enables or disables the telemetry heartbeat */
-void telemetry_set_enabled(bool state);
+void telemetry_set_enabled(bool state, cJSON* payload);
 
 // ===== MOTOR CONTROL SERVICE =====
 /** @brief Configures PWM timers and GPIOs for motor control */
@@ -64,12 +64,23 @@ void motor_service_stop(void);
 /** @brief Returns true if current set direction is forward */
 bool motor_get_current_direction(void);
 
+/**
+ * @brief Sets the motor direction and updates associated services
+ * @param forward True for forward, false for backward
+ */
+void motor_set_direction(bool forward);
+
 // ===== LIGHTING SERVICE =====
 /** @brief Configures GPIOs for the lighting system */
 void light_service_init(void);
 
 /** @brief Sets the state of front/rear white and red LEDs */
 void light_service_set(bool white_front, bool red_front, bool white_rear, bool red_rear);
+
+/** * @brief Returns the global lighting status.
+ * @return True if at least one LED is powered ON, false if all LEDs are OFF.
+ */
+bool light_is_enabled();
 
 // ===== WEBSOCKET APPLICATION =====
 /** @brief Starts the WebSocket client task */
@@ -79,6 +90,12 @@ void websocket_app_start(void);
  * @param payload The cJSON object to send (function takes ownership and will delete it)
  */
 void send_ws_envelope(esp_websocket_client_handle_t client, const char* type, const char* target, cJSON* payload);
+
+/** * @brief Automatically updates lights based on the motor's current direction.
+ * * Switches between front and rear lighting sets (e.g., white at the front, 
+ * red at the rear) depending on whether the motor is in forward or reverse.
+ */
+void update_light_by_current_dir();
 
 #ifdef __cplusplus
 }

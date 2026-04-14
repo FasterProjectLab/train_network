@@ -112,12 +112,34 @@ static void telemetry_callback(void* arg) {
     uint32_t free_ram = esp_get_free_heap_size();
     uint32_t min_ram = esp_get_minimum_free_heap_size();
     uint32_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    uint32_t stack_free_bytes = uxTaskGetStackHighWaterMark(NULL);
 
     // 3. Collect WiFi metrics (Signal strength)
     int rssi = -127;
     wifi_ap_record_t ap;
+    char* wifi_std = "unknown";
+    uint8_t primary_chan = 0;
+    wifi_second_chan_t second_chan= WIFI_SECOND_CHAN_NONE; 
+    wifi_bandwidth_t bw_type = WIFI_BW_HT20;
+    int bw_real = 20;
+
     if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
         rssi = ap.rssi;
+
+        if (ap.phy_11n) {
+            wifi_std = "802.11n";
+        }
+        else if (ap.phy_11g) wifi_std = "802.11g";
+        else if (ap.phy_11b) wifi_std = "802.11b";
+
+        esp_wifi_get_channel(&primary_chan, &second_chan);
+
+        esp_wifi_get_bandwidth(WIFI_IF_STA, &bw_type);
+
+        if (bw_type == WIFI_BW_HT40) {
+            if (second_chan == WIFI_SECOND_CHAN_ABOVE) bw_real = +40;      
+            else if (second_chan == WIFI_SECOND_CHAN_BELOW) bw_real = -40; 
+        }
     }
 
     // 4. Collect Internal Temperature
@@ -139,11 +161,17 @@ static void telemetry_callback(void* arg) {
     cJSON_AddNumberToObject(payload, "ram_free", free_ram);
     cJSON_AddNumberToObject(payload, "ram_min", min_ram);
     cJSON_AddNumberToObject(payload, "psram_free", free_psram);
+
     cJSON_AddNumberToObject(payload, "rssi", rssi);
+    cJSON_AddStringToObject(payload, "wifi_std", wifi_std);
+    cJSON_AddNumberToObject(payload, "wifi_chan", primary_chan);
+    cJSON_AddNumberToObject(payload, "wifi_bw_able", (bw_type == WIFI_BW_HT40) ? 40 : 20);
+    cJSON_AddNumberToObject(payload, "wifi_bw_real", bw_real); // 0: HT20, 1: HT40+, 2: HT40-
+
     cJSON_AddNumberToObject(payload, "uptime", (long)(esp_timer_get_time() / 1000000));
     
     // Include stack high water mark for debugging purposes
-    cJSON_AddNumberToObject(payload, "stack_mon", (unsigned int)uxTaskGetStackHighWaterMark(NULL));
+    cJSON_AddNumberToObject(payload, "stack_mon", (unsigned int)stack_free_bytes);
 
     // Send via WebSocket envelope
     ESP_LOGI(TAG, "Sending telemetry heartbeat");
@@ -182,25 +210,43 @@ esp_err_t telemetry_task_init(uint32_t interval_ms, esp_websocket_client_handle_
 /**
  * @brief Enable or disable the telemetry periodic service
  */
-void telemetry_set_enabled(bool state) {
+void telemetry_set_enabled(bool state, cJSON* payload) {
     if (telemetry_state == state) return;
 
+    int interval = 1000;
     telemetry_state = state;
-    ESP_LOGI(TAG, "Telemetry state changed to: %s", state ? "ENABLED" : "DISABLED");
+
+    ESP_LOGI(TAG, "Telemetry state changed to: %s with interval: %d ms", state ? "ENABLED" : "DISABLED", interval);
 
     if (telemetry_state) {
-        telemetry_start();
+
+        if (payload != NULL && cJSON_IsObject(payload)) {
+            cJSON* item = cJSON_GetObjectItem(payload, "interval");
+            if (cJSON_IsNumber(item)) {
+                interval = item->valueint;
+            }
+        }
+
+        if (interval < 500) {
+            interval = 500;
+            ESP_LOGW(TAG, "Interval too short, clamped to %d ms", interval);
+        } else if (interval > 5000) {
+            interval = 5000;
+            ESP_LOGW(TAG, "Interval too long, clamped to %d ms", interval);
+        }
+
+        telemetry_start(interval);
     } else {
         telemetry_stop();
     }
 }
 
-void telemetry_start() {
+void telemetry_start(int interval_ms) {
     if (telemetry_timer == NULL) return;
     
-    esp_err_t err = esp_timer_start_periodic(telemetry_timer, (uint64_t)task_interval_ms * 1000);
+    esp_err_t err = esp_timer_start_periodic(telemetry_timer, (uint64_t)interval_ms * 1000);
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Telemetry service started (Interval: %lu ms)", (unsigned long)task_interval_ms);
+        ESP_LOGI(TAG, "Telemetry service started (Interval: %lu ms)", (unsigned long)interval_ms);
     }
 }
 

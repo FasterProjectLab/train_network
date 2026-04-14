@@ -32,6 +32,22 @@ bool motor_get_current_direction(void) {
 }
 
 /**
+ * @brief Sets the motor direction and updates associated services
+ * @param forward True for forward, false for backward
+ */
+void motor_set_direction(bool forward) {
+    if (current_dir == forward) return;
+
+    current_dir = forward;
+    
+    ESP_LOGI(TAG, "Motor direction changed to: %s", current_dir ? "FORWARD" : "BACKWARD");
+
+    if (light_is_enabled()) {
+        update_light_by_current_dir();
+    }
+}
+
+/**
  * @brief Initializes the LEDC peripheral for DC motor PWM control
  */
 void motor_service_init(void)
@@ -95,7 +111,7 @@ void motor_service_set_speed(uint8_t duty, bool forward)
             duty = 0; 
         } else {
             // Safe to switch direction
-            current_dir = forward;
+            motor_set_direction(forward);
             ESP_LOGI("MOTOR", "Direction changed successfully");
         }
     }
@@ -110,7 +126,7 @@ void motor_service_set_speed(uint8_t duty, bool forward)
     } else {
         is_currently_moving = true;
         // Apply direction if not blocked by safety logic above
-        current_dir = forward; 
+        motor_set_direction(forward);
     }
 
     // Convert percentage (0-100) to LEDC duty value (0-1023)

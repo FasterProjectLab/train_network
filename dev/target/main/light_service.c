@@ -10,6 +10,8 @@
 #define GPIO_WHITE_REAR   42
 #define GPIO_RED_REAR     41
 
+bool lights_enabled = false;
+
 /**
  * @brief Initializes the lighting system GPIOs
  * Configures the front and rear LED pins as outputs with internal pull-ups.
@@ -50,8 +52,17 @@ void light_service_set(bool white_front, bool red_front, bool white_rear, bool r
     gpio_set_level(GPIO_RED_FRONT,   red_front ? 1 : 0);
     gpio_set_level(GPIO_WHITE_REAR,  white_rear ? 1 : 0);
     gpio_set_level(GPIO_RED_REAR,    red_rear ? 1 : 0);
+
+    lights_enabled = (white_front || red_front || white_rear || red_rear);
     
     // Log the new state for debugging (Verbosity: Info)
     ESP_LOGI(TAG, "Lights updated - [Front] White:%d, Red:%d | [Rear] White:%d, Red:%d", 
              white_front, red_front, white_rear, red_rear);
+}
+
+/** * @brief Returns the global lighting status.
+ * @return True if at least one LED is powered ON, false if all LEDs are OFF.
+ */
+bool light_is_enabled() {
+    return lights_enabled;
 }

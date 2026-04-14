@@ -4,12 +4,13 @@ ssid=${WIFI_SSID}
 hw_mode=g
 channel=${WIFI_CHANNEL}
 
-# Wi-Fi 4 activé
+# Wi-Fi 4
 ieee80211n=1
 
-ht_capab=[HT40+][DSSS_CCK-40]
+# 40 MHz
+ht_capab=[HT40+][SHORT-GI-40][DSSS_CCK-40]
 
-# Sécurité
+# Security
 wpa=2
 wpa_passphrase=${WIFI_PASS}
 wpa_key_mgmt=WPA-PSK

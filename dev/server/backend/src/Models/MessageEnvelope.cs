@@ -11,6 +11,9 @@ public class MessageEnvelope
     [JsonPropertyName("type")]
     public string Type { get; set; } = string.Empty;
 
+    [JsonPropertyName("tag")]
+    public string Tag { get; set; } = string.Empty;
+
     [JsonPropertyName("source")]
     public string Source { get; set; } = string.Empty;
 

@@ -60,7 +60,7 @@ const PanelControl: React.FC<PanelControlProps> = ({
     wsService.send(JSON.stringify({
       type: ProtocolConstants.ActionSubscibe,
       target: targetId,
-      payload: "camera"
+      tag: "camera"
     }));
     
     setIsStreaming(true);
@@ -76,7 +76,7 @@ const PanelControl: React.FC<PanelControlProps> = ({
     wsService.send(JSON.stringify({
       type: ProtocolConstants.ActionUnsubscribe,
       target: targetId,
-      payload: "camera"
+      tag: "camera"
     }));
     
     setIsStreaming(false);
