@@ -59,7 +59,6 @@ void telemetry_set_enabled(bool state, cJSON* payload);
 
 // ===== MOTOR CONTROL SERVICE =====
 /** @brief Configures PWM timers and GPIOs for motor control */
-void motor_service_init(void);
 
 /** @brief Sets motor speed (0-100%) and direction */
 void motor_service_set_speed(uint8_t duty, bool forward);
@@ -111,6 +110,11 @@ esp_err_t i2c_service_receive(uint8_t dev_addr, uint8_t *data, size_t len);
 
 // Function prototypes
 esp_err_t nfc_service_init(void);
+
+esp_err_t pca9685_set_pwm(uint8_t channel, uint16_t duty);
+void drv8833_set_speed(int16_t speed);
+void drv8833_set_speed_percent(int8_t percent);
+esp_err_t pca9685_init();
 
 #ifdef __cplusplus
 }

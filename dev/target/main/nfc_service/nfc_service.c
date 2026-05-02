@@ -157,10 +157,10 @@ static void nfc_worker_task(void* arg) {
 
 esp_err_t nfc_service_init_IRQ() {
     gpio_config_t io_conf = {
-        .intr_type = GPIO_INTR_NEGEDGE,    // IRQ PN532 passe de High à Low
+        .intr_type = GPIO_INTR_NEGEDGE,    
         .pin_bit_mask = (1ULL << NFC_IRQ_PIN),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = 1,                   // Crucial si pas de pull-up externe
+        .pull_up_en = 1,                   
     };
     gpio_config(&io_conf);
 

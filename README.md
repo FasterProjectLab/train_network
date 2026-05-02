@@ -63,3 +63,36 @@ source env/bin/activate
 pip install websockets opencv-python numpy
 
 python3 test.py
+
+# PINOUT
+
+48 interruption PN532 pull up 3.3v
+21 I2C_SDA_PIN     en 3.3v    
+47 I2C_SCL_PIN     en 3.3v
+
+nfc tools
+
+sequence:
+
+config SAM:
+esp32 -> PN532 = cmd SAM
+PN -> esp = IRQ + ACK
+PN -> esp = irq + DATA (D5 15)
+ESP (scan)
+
+SCAN:
+ESP -> PN = Active l'ecoute
+PN -> ESP = ACK
+(wait)
+
+Detection:
+PN = IRQ + Detection
+ESP = Donne page 4
+PN = IRQ + ACK
+PN = IRQ + Data
+(new scan)
+
+PCA
+Enable device 0x21
+Commande freq
+ne pas oublier le eep à 3.3v sur dvr
