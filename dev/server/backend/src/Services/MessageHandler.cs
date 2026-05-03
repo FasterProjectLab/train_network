@@ -126,7 +126,7 @@ public class MessageHandler
                 break;
 
             case ProtocolConstants.ActionUnSubscribe:
-                string? unSubTag = env.Payload?.ToString()?.ToLower();
+                string? unSubTag = env.Tag?.ToString()?.ToLower();
                 if (string.IsNullOrEmpty(unSubTag)) return;
 
                 _mgr.Unsubscribe(senderId, env.Target, unSubTag);
