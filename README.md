@@ -66,9 +66,17 @@ python3 test.py
 
 # PINOUT
 
-48 interruption PN532 pull up 3.3v
+alim vcc pca
+alim vcc pn 3.3v
+o2 pca  0v
+
+42 interruption PN532 pull up 3.3v
 21 I2C_SDA_PIN     en 3.3v    
 47 I2C_SCL_PIN     en 3.3v
+1
+2
+48 busy
+41
 
 nfc tools
 

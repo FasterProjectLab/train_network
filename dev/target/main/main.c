@@ -31,29 +31,29 @@ void app_main(void) {
 
     i2c_service_scan();
     pca9685_init();
-    drv8833_set_speed_percent(-100);
-    //nfc_service_init();
+    drv8833_set_speed_percent(50);
+    nfc_service_init();
 
-    // // 3. Hardware Service Initializations
-    // // Priority 1: Camera (Critical peripheral)
-    // if (camera_init_service() != ESP_OK) {
-    //     ESP_LOGE(TAG, "Critical Camera initialization failed. Halting system.");
-    //     return;
-    // }
+    // 3. Hardware Service Initializations
+    // Priority 1: Camera (Critical peripheral)
+    if (camera_init_service() != ESP_OK) {
+        ESP_LOGE(TAG, "Critical Camera initialization failed. Halting system.");
+        return;
+    }
 
     // // Priority 2: Peripherals (Lights and Motors)
     // ESP_LOGI(TAG, "Initializing hardware peripherals...");
     // light_service_init();
     // motor_service_init();
 
-    // // 4. Network Connectivity
-    // /* * Start Wi-Fi in Station mode.
-    //  * Note: This service is asynchronous. Once a connection is established, 
-    //  * its internal event handler will automatically trigger the WebSocket 
-    //  * and OTA services.
-    //  */
-    // ESP_LOGI(TAG, "Starting Wi-Fi Station initialization...");
-    // wifi_init_sta();
+    // 4. Network Connectivity
+    /* * Start Wi-Fi in Station mode.
+     * Note: This service is asynchronous. Once a connection is established, 
+     * its internal event handler will automatically trigger the WebSocket 
+     * and OTA services.
+     */
+    ESP_LOGI(TAG, "Starting Wi-Fi Station initialization...");
+    wifi_init_sta();
 
-    // ESP_LOGI(TAG, "System initialization sequence complete. Event loop running.");
+    ESP_LOGI(TAG, "System initialization sequence complete. Event loop running.");
 }

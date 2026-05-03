@@ -1,7 +1,7 @@
 
 
 #define PN532_ADDR 0x24
-#define NFC_IRQ_PIN     48
+#define NFC_IRQ_PIN     42
 
 #define PN532_I2C_STAT_OFFSET   0  // 0x01 = Ready, 0x00 = Not Ready
 #define PN532_PREAMBLE_OFFSET   1  // 0x00

@@ -180,11 +180,11 @@ static void handle_motor_command(cJSON *payload) {
         }
         
         if (speed_val > 0) {
-            motor_service_set_speed(speed_val, forward);
+            //motor_service_set_speed(speed_val, forward);
             ESP_LOGI(TAG, "Motor: Speed %d, Dir: %s", speed_val, forward ? "FWD" : "REV");
         } else {
-            motor_service_stop();
-            motor_set_direction(forward);
+            //motor_service_stop();
+            //motor_set_direction(forward);
         }
     }
 }
@@ -211,11 +211,11 @@ static void handle_light_command(cJSON *payload) {
  * red at the rear) depending on whether the motor is in forward or reverse.
  */
 void update_light_by_current_dir() {
-    if (motor_get_current_direction()) {
+    // if (motor_get_current_direction()) {
         light_service_set(false, false, true, true);
-    } else {
-        light_service_set(true, true, false, false);
-    }
+    // } else {
+    //     light_service_set(true, true, false, false);
+    // }
 }
 
 /**

@@ -5,10 +5,6 @@
 
 // ===== GPIO DEFINITIONS =====
 // Adjust these pins based on your specific hardware layout
-#define GPIO_WHITE_FRONT  1
-#define GPIO_RED_FRONT    2
-#define GPIO_WHITE_REAR   42
-#define GPIO_RED_REAR     41
 
 bool lights_enabled = false;
 
@@ -17,26 +13,11 @@ bool lights_enabled = false;
  * Configures the front and rear LED pins as outputs with internal pull-ups.
  */
 void light_service_init(void) {
-    // Group configuration for all 4 lighting GPIOs
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GPIO_WHITE_FRONT) | 
-                        (1ULL << GPIO_RED_FRONT) | 
-                        (1ULL << GPIO_WHITE_REAR) | 
-                        (1ULL << GPIO_RED_REAR),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
     
-    // Apply configuration and check for errors
-    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
     // Initialize all lights to OFF (0) state
     light_service_set(false, false, false, false);
     
-    ESP_LOGI(TAG, "Lighting service initialized on GPIOs: %d, %d, %d, %d", 
-             GPIO_WHITE_FRONT, GPIO_RED_FRONT, GPIO_WHITE_REAR, GPIO_RED_REAR);
 }
 
 /**
@@ -47,11 +28,7 @@ void light_service_init(void) {
  * @param red_rear     State for rear red LEDs
  */
 void light_service_set(bool white_front, bool red_front, bool white_rear, bool red_rear) {
-    // Set individual GPIO levels based on boolean input
-    gpio_set_level(GPIO_WHITE_FRONT, white_front ? 1 : 0);
-    gpio_set_level(GPIO_RED_FRONT,   red_front ? 1 : 0);
-    gpio_set_level(GPIO_WHITE_REAR,  white_rear ? 1 : 0);
-    gpio_set_level(GPIO_RED_REAR,    red_rear ? 1 : 0);
+    
 
     lights_enabled = (white_front || red_front || white_rear || red_rear);
     
