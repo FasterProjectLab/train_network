@@ -2,6 +2,7 @@
 #include "main_config.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "ota_manager.h"
 
 // Reference to the embedded certificate for HTTPS validation
 extern const uint8_t server_cert_pem_start[] asm("_binary_server_cert_pem_start");

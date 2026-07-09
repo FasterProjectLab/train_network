@@ -1,3 +1,4 @@
+#include "camera_manager.h"
 #include "esp_camera.h"
 #include "esp_log.h"
 #include "main_config.h"
@@ -6,7 +7,6 @@
 #include "esp_mac.h"
 #include "rom/ets_sys.h" 
 
-// ===== CAMERA PINOUT (ESP32-S3-CAM / Freenove) =====
 #define CAM_PIN_PWDN -1
 #define CAM_PIN_RESET -1
 #define CAM_PIN_XCLK 15
@@ -24,7 +24,6 @@
 #define CAM_PIN_HREF 7
 #define CAM_PIN_PCLK 13
 
-// ===== STREAMING CONFIGURATION =====
 #define DEST_IP "192.168.10.1"
 #define DEST_PORT 5004
 #define MAX_RTP_PAYLOAD 1400
@@ -32,13 +31,9 @@
 #define QUALITY_MAX 45   // Lowest quality (high compression)
 #define TARGET_SEND_TIME_MS 35 // Threshold for network congestion
 
-// Static handles
-static TaskHandle_t stream_task_handle = NULL;
-static bool camera_state = false;
+static TaskHandle_t s_stream_task_handle = NULL;
+static bool s_camera_active = false;
 
-/**
- * @brief Stream context to keep track of network and RTP state
- */
 typedef struct {
     int sock;
     struct sockaddr_in dest_addr;
@@ -48,16 +43,12 @@ typedef struct {
     int quality;
 } stream_ctx_t;
 
-// Forward declarations
-void stream_task(void *pvParameters);
+static void stream_task(void *pvParameters);
 static bool send_rtp_packet(stream_ctx_t *ctx, camera_fb_t *fb, size_t offset, size_t chunk_size, bool is_last);
 static void process_and_send_fb(stream_ctx_t *ctx, camera_fb_t *fb);
 static int stream_init_socket(struct sockaddr_in *dest_addr);
 
-/**
- * @brief Generates a unique 32-bit Synchronization Source (SSRC) from MAC address
- */
-uint32_t generate_ssrc_from_mac() {
+uint32_t camera_manager_generate_ssrc_from_mac(void) {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
 
@@ -70,9 +61,9 @@ uint32_t generate_ssrc_from_mac() {
 }
 
 /**
- * @brief Initializes the OV2640/OV5640 camera sensor
+ * @brief Initialise le matériel de la caméra
  */
-esp_err_t camera_init_service(void) {
+esp_err_t camera_manager_init_hardware(void) {
     camera_config_t config = {
         .pin_pwdn = CAM_PIN_PWDN,
         .pin_reset = CAM_PIN_RESET,
@@ -120,21 +111,35 @@ esp_err_t camera_init_service(void) {
     return ESP_OK;
 }
 
-/**
- * @brief Toggles the camera streaming state via task notification
- */
-void camera_set_enabled(bool state) {
-    camera_state = state;
-    ESP_LOGI(TAG, "Stream status: %s", state ? "RESUMED" : "PAUSED");
+void camera_manager_set_enabled(bool state) {
+    s_camera_active = state;
+    ESP_LOGI(TAG, "Camera streaming status: %s", state ? "RESUMED" : "PAUSED");
 
-    if (state && stream_task_handle != NULL) {
-        xTaskNotifyGive(stream_task_handle);
+    if (state && s_stream_task_handle != NULL) {
+        xTaskNotifyGive(s_stream_task_handle);
     }
 }
 
-void camera_task_init() {
-    // Pin task to Core 1 to avoid interference with Wi-Fi stack on Core 0
-    xTaskCreatePinnedToCore(stream_task, "stream_task", 4096, NULL, 4, &stream_task_handle, 1);
+bool camera_manager_is_active(void) {
+    return s_camera_active;
+}
+
+void camera_manager_task_init(void) {
+    xTaskCreatePinnedToCore(stream_task, "camera_stream_task", 4096, NULL, 4, &s_stream_task_handle, 1);
+}
+
+void camera_manager_update_settings(const char* variable, int value) {
+    sensor_t *s = esp_camera_sensor_get();
+    if (s == NULL) return;
+
+    if (strcmp(variable, "framesize") == 0) {
+        s->set_framesize(s, (framesize_t)value);
+        ESP_LOGI(TAG, "Resolution updated: %d", value);
+    } 
+    else if (strcmp(variable, "quality") == 0) {
+        s->set_quality(s, value);
+        ESP_LOGI(TAG, "JPEG quality updated: %d", value);
+    }
 }
 
 /**
@@ -166,7 +171,6 @@ static bool send_rtp_packet(stream_ctx_t *ctx, camera_fb_t *fb, size_t offset, s
         (uint8_t)(fb->height / 8)           // Height in 8-pixel blocks
     };
 
-    // Use scatter/gather I/O to avoid extra buffer copying
     struct iovec iov[3] = {
         { .iov_base = rtp_header, .iov_len = 12 },
         { .iov_base = jpg_header, .iov_len = 8 },
@@ -183,9 +187,6 @@ static bool send_rtp_packet(stream_ctx_t *ctx, camera_fb_t *fb, size_t offset, s
     return sendmsg(ctx->sock, &msg, 0) >= 0;
 }
 
-/**
- * @brief Fragments the frame buffer into RTP packets and manages transmission pacing
- */
 static void process_and_send_fb(stream_ctx_t *ctx, camera_fb_t *fb) {
     size_t sent_len = 0;
     int consecutive_errors = 0;
@@ -198,14 +199,11 @@ static void process_and_send_fb(stream_ctx_t *ctx, camera_fb_t *fb) {
         if (send_rtp_packet(ctx, fb, sent_len, chunk_size, is_last)) {
             sent_len += chunk_size;
             consecutive_errors = 0;
-            // Pacing delay to prevent overwhelming the network buffer
             ets_delay_us(150); 
         } else {
-            // Buffer full or network busy: back off for 2ms
             consecutive_errors++;
             vTaskDelay(pdMS_TO_TICKS(2)); 
 
-            // Hard drop after 50 retries to prevent massive lag
             if (consecutive_errors > 50) {
                 ESP_LOGW(TAG, "Network congestion: frame dropped");
                 break;
@@ -227,12 +225,9 @@ static int stream_init_socket(struct sockaddr_in *dest_addr) {
     return sock;
 }
 
-/**
- * @brief Main streaming loop
- */
-void stream_task(void *pvParameters) {
+static void stream_task(void *pvParameters) {
     stream_ctx_t ctx = {
-        .ssrc = generate_ssrc_from_mac(),
+        .ssrc = camera_manager_generate_ssrc_from_mac(),
         .seq_num = 0,
         .timestamp = 0,
     };
@@ -246,8 +241,7 @@ void stream_task(void *pvParameters) {
     ESP_LOGI(TAG, "Stream task started and ready");
 
     while (1) {
-        // Suspend task if camera is disabled
-        if (!camera_state) {
+        if (!s_camera_active) {
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         }
 
@@ -257,30 +251,11 @@ void stream_task(void *pvParameters) {
             continue;
         }
 
-        // Send the frame and update timing
         process_and_send_fb(&ctx, fb);
 
         ctx.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
         esp_camera_fb_return(fb);
         
-        // Small yield to keep the system responsive
         vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-/**
- * @brief Dynamically update camera sensor parameters via WebSocket commands
- */
-void camera_service_update_settings(const char* variable, int value) {
-    sensor_t *s = esp_camera_sensor_get();
-    if (s == NULL) return;
-
-    if (strcmp(variable, "framesize") == 0) {
-        s->set_framesize(s, (framesize_t)value);
-        ESP_LOGI(TAG, "Resolution updated: %d", value);
-    } 
-    else if (strcmp(variable, "quality") == 0) {
-        s->set_quality(s, value);
-        ESP_LOGI(TAG, "JPEG quality updated: %d", value);
     }
 }

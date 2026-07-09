@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import wsService from '../../../../services/WebsocketService';
 import './MotorControl.css';
+import { Train } from '../../../../models/Protocol';
 
 /**
  * @interface MotorControlProps
  * @brief Properties required for the Motor Control plugin.
  */
 interface MotorControlProps {
-  targetId: string;
+  targetTrain: Train;
   addLog: (text: string) => void;
 }
 
@@ -21,9 +22,9 @@ type Direction = 'fwd' | 'rev';
  * @component MotorControl
  * @brief Dashboard plugin for controlling train traction, speed, and direction.
  */
-const MotorControl: React.FC<MotorControlProps> = ({ targetId, addLog }) => {
-  const [speed, setSpeed] = useState<number>(0);
-  const [direction, setDirection] = useState<Direction>('fwd');
+const MotorControl: React.FC<MotorControlProps> = ({ targetTrain, addLog }) => {
+  const speed = targetTrain.status?.motor.speed ?? 0;
+  const direction = targetTrain.status?.motor.dir ?? "fwd";
 
   /**
    * @brief Synchronizes local state and transmits motor commands via WebSocket.
@@ -31,20 +32,10 @@ const MotorControl: React.FC<MotorControlProps> = ({ targetId, addLog }) => {
    * @param newDir Direction of travel ('fwd' or 'rev').
    */
   const update = (newSpeed: number, newDir: Direction) => {
-    if (!targetId) return;
+    if (!targetTrain) return;
 
-    setSpeed(newSpeed);
-    setDirection(newDir);
-
-    wsService.send(JSON.stringify({
-      type: "motor", 
-      target: targetId,
-      payload: { 
-        speed: String(newSpeed), 
-        dir: newDir 
-      },
-      timestamp: Math.floor(Date.now() / 1000)
-    }));
+    wsService.sendMotorCommand(targetTrain.id, String(newSpeed), newDir);
+    wsService.sendGetTrainStatus(targetTrain.id);
 
     addLog(`Motor: ${newSpeed}% | Direction: ${newDir.toUpperCase()}`);
   };

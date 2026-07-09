@@ -6,30 +6,29 @@
 #include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "esp_camera.h"
+#include "light_manager/light_manager.h"
+#include "motor_manager/motor_manager.h"
+#include "camera_manager/camera_manager.h"
+#include "telemetry_manager/telemetry_manager.h"
+#include "ota_manager/ota_manager.h"
 
-// --- Prototypes ---
-static char* get_ws_identifier();
+static char* get_ws_identifier(void);
 static void send_ws_connection(esp_websocket_client_handle_t client);
 static void handle_motor_command(cJSON *payload);
 static void handle_light_command(cJSON *payload);
 static void handle_system_command(cJSON *payload);
 static void handle_camera_control(cJSON *payload);
-static void process_incoming_message(const char *data, size_t len);
+static void process_incoming_message(const char *data, size_t len, esp_websocket_client_handle_t client);
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
 void get_mac_address(char *out_str, size_t size);
 static void websocket_heartbeat_task(void *pvParameters);
-void websocket_stop_heartbeat();
+void websocket_stop_heartbeat(void);
+static void send_ws_train_status(esp_websocket_client_handle_t client, const char *target);
 
-// Static task handle for lifecycle management
 static TaskHandle_t heartbeat_task_handle = NULL;
 
-/**
- * @brief Starts the WebSocket application and initializes associated services
- */
 void websocket_app_start(void) {
     static char full_url[128];
-    // Construct the unique URL using the device identifier (MAC)
     snprintf(full_url, sizeof(full_url), SERVER_WS_URL, get_ws_identifier());
 
     const esp_websocket_client_config_t ws_cfg = {
@@ -41,8 +40,7 @@ void websocket_app_start(void) {
         .task_prio = 5,
     };
 
-    // Initialize camera hardware before connecting
-    camera_task_init();
+    camera_manager_task_init();
 
     ESP_LOGI(TAG, "Connecting to: %s", full_url);
 
@@ -50,13 +48,9 @@ void websocket_app_start(void) {
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);
     esp_websocket_client_start(client);
 
-    // Initialize telemetry with a 5-second interval
-    telemetry_task_init(5000, client);
+    telemetry_manager_task_init(5000, client);
 }
 
-/**
- * @brief Wraps a payload into a standard JSON envelope and sends it
- */
 void send_ws_envelope(esp_websocket_client_handle_t client, const char* type, const char* target, cJSON* payload) {
     cJSON *root = cJSON_CreateObject();
     if (!root) return;
@@ -81,9 +75,6 @@ void send_ws_envelope(esp_websocket_client_handle_t client, const char* type, co
     cJSON_Delete(root);
 }
 
-/**
- * @brief WebSocket event dispatcher
- */
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
     esp_websocket_client_handle_t client = (esp_websocket_client_handle_t)handler_args;
     esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
@@ -91,7 +82,6 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI(TAG, "WebSocket: Connected to transport");
-            send_ws_connection(client);
             
             if (heartbeat_task_handle == NULL) {
                 xTaskCreate(websocket_heartbeat_task, "ws_heartbeat", 3072, client, 3, &heartbeat_task_handle);
@@ -100,15 +90,15 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 
         case WEBSOCKET_EVENT_DATA:
             if (data->data_len > 0 && data->op_code == 0x01) {
-                process_incoming_message((char *)data->data_ptr, data->data_len);
+                process_incoming_message((char *)data->data_ptr, data->data_len, client);
             }
             break;
 
         case WEBSOCKET_EVENT_DISCONNECTED:
             ESP_LOGW(TAG, "WebSocket: Disconnected");
             websocket_stop_heartbeat();
-            camera_set_enabled(false);
-            telemetry_set_enabled(false, NULL);
+            camera_manager_set_enabled(false);
+            telemetry_manager_set_enabled(false, NULL);
             break;
 
         default:
@@ -116,36 +106,35 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     }
 }
 
-/**
- * @brief Parses incoming JSON and routes commands to appropriate handlers
- */
-static void process_incoming_message(const char *data, size_t len) {
+static void process_incoming_message(const char *data, size_t len, esp_websocket_client_handle_t client) {
     cJSON *root = cJSON_ParseWithLength(data, len);
     if (root == NULL) return;
 
     cJSON *type = cJSON_GetObjectItem(root, "type");
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    cJSON *source = cJSON_GetObjectItem(root, "source");
 
     if (cJSON_IsString(type)) {
         const char *type_str = type->valuestring;
 
-        if (strcmp(type_str, "conn_ack") == 0) {
+        if (strcmp(type_str, "welcom") == 0) {
             ESP_LOGI(TAG, "Server authentication successful");
+            send_ws_connection(client);
         }
         else if (strcmp(type_str, "camera_start") == 0) {
-            camera_set_enabled(true);
+            camera_manager_set_enabled(true);
         }
         else if (strcmp(type_str, "camera_stop") == 0) {
-            camera_set_enabled(false);
+            camera_manager_set_enabled(false);
         }
         else if (strcmp(type_str, "camera_control") == 0) {
             handle_camera_control(payload);
         }
         else if (strcmp(type_str, "telemetry_start") == 0) {
-            telemetry_set_enabled(true, payload);
+            telemetry_manager_set_enabled(true, payload);
         }
         else if (strcmp(type_str, "telemetry_stop") == 0) {
-            telemetry_set_enabled(false, NULL);
+            telemetry_manager_set_enabled(false, NULL);
         }
         else if (strcmp(type_str, "system") == 0) {
             handle_system_command(payload);
@@ -155,16 +144,15 @@ static void process_incoming_message(const char *data, size_t len) {
         }
         else if (strcmp(type_str, "light") == 0) {
             handle_light_command(payload);
+        } 
+        else if (strcmp(type_str, "get_train_status") == 0) {
+            const char *source_str = "server";
+            send_ws_train_status(client, source_str);
         }
     }
     cJSON_Delete(root);
 }
 
-// --- Specific Command Handlers ---
-
-/**
- * @brief Handles motor speed and direction commands
- */
 static void handle_motor_command(cJSON *payload) {
     if (!cJSON_IsObject(payload)) return;
 
@@ -180,18 +168,15 @@ static void handle_motor_command(cJSON *payload) {
         }
         
         if (speed_val > 0) {
-            motor_service_set_speed(speed_val, forward);
+            motor_manager_set_speed(speed_val, forward);
             ESP_LOGI(TAG, "Motor: Speed %d, Dir: %s", speed_val, forward ? "FWD" : "REV");
         } else {
-            motor_service_stop();
-            motor_set_direction(forward);
+            motor_manager_stop();
+            motor_manager_set_direction(forward);
         }
     }
 }
 
-/**
- * @brief Handles lighting states based on movement direction
- */
 static void handle_light_command(cJSON *payload) {
     if (!cJSON_IsObject(payload)) return;
 
@@ -199,28 +184,20 @@ static void handle_light_command(cJSON *payload) {
     if (!cJSON_IsString(status_item)) return;
 
     if (strcmp(status_item->valuestring, "ON") == 0) {
-        // Logic depends on current motor direction
-        update_light_by_current_dir();
+        light_manager_update_by_current_dir();
     } else {
-        light_service_set(false, false, false, false);
+        light_manager_set(false, false, false, false);
     }
 }
 
-/** * @brief Automatically updates lights based on the motor's current direction.
- * * Switches between front and rear lighting sets (e.g., white at the front, 
- * red at the rear) depending on whether the motor is in forward or reverse.
- */
-void update_light_by_current_dir() {
-    if (motor_get_current_direction()) {
-        light_service_set(false, false, true, true);
+void light_manager_update_by_current_dir(void) {
+    if (motor_manager_get_current_direction()) {
+        light_manager_set(false, false, true, true);
     } else {
-        light_service_set(true, true, false, false);
+        light_manager_set(true, true, false, false);
     }
 }
 
-/**
- * @brief Handles system-level actions like OTA and Reboot
- */
 static void handle_system_command(cJSON *payload) {
     if (!cJSON_IsObject(payload)) return;
 
@@ -241,9 +218,6 @@ static void handle_system_command(cJSON *payload) {
     }
 }
 
-/**
- * @brief Updates camera sensor settings (brightness, contrast, etc.)
- */
 static void handle_camera_control(cJSON *payload) {
     if (!cJSON_IsObject(payload)) return;
 
@@ -251,19 +225,17 @@ static void handle_camera_control(cJSON *payload) {
     cJSON *val_item = cJSON_GetObjectItem(payload, "value");
 
     if (cJSON_IsString(var_item) && cJSON_IsNumber(val_item)) {
-        camera_service_update_settings(var_item->valuestring, val_item->valueint);
+        camera_manager_update_settings(var_item->valuestring, val_item->valueint);
     }
 }
-
-// --- Utilities & Heartbeat ---
 
 static void send_ws_connection(esp_websocket_client_handle_t client) {
     if (esp_websocket_client_is_connected(client)) {
         cJSON *caps = cJSON_CreateObject();
         cJSON_AddStringToObject(caps, "device", get_ws_identifier());
-        cJSON_AddNumberToObject(caps, "ssrc", (double) generate_ssrc_from_mac());
+        cJSON_AddNumberToObject(caps, "ssrc", (double) camera_manager_generate_ssrc_from_mac());
         cJSON_AddBoolToObject(caps, "camera", true);
-        send_ws_envelope(client, "conn", "server", caps);
+        send_ws_envelope(client, "ack_welcom", "server", caps);
     }
 }
 
@@ -278,7 +250,7 @@ static void websocket_heartbeat_task(void *pvParameters) {
     }
 }
 
-void websocket_stop_heartbeat() {
+void websocket_stop_heartbeat(void) {
     if (heartbeat_task_handle != NULL) {
         vTaskDelete(heartbeat_task_handle);
         heartbeat_task_handle = NULL;
@@ -293,8 +265,32 @@ void get_mac_address(char *out_str, size_t size) {
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
-static char* get_ws_identifier() {
+static char* get_ws_identifier(void) {
     static char mac_id[13];
     get_mac_address(mac_id, sizeof(mac_id));
     return mac_id;
+}
+
+static void send_ws_train_status(esp_websocket_client_handle_t client, const char *target) {
+    if (!esp_websocket_client_is_connected(client)) return;
+
+    cJSON *status_payload = cJSON_CreateObject();
+    if (!status_payload) return;
+
+    cJSON_AddBoolToObject(status_payload, "light", light_manager_is_enabled());
+
+    cJSON *motor_obj = cJSON_CreateObject();
+    if (motor_obj) {      
+        bool forward = motor_manager_get_current_direction();
+        
+        cJSON_AddNumberToObject(motor_obj, "speed", motor_manager_get_current_speed());
+        cJSON_AddStringToObject(motor_obj, "dir", forward ? "fwd" : "rev");
+        cJSON_AddItemToObject(status_payload, "motor", motor_obj);
+    }
+
+    cJSON_AddBoolToObject(status_payload, "camera_active", camera_manager_is_active());
+    cJSON_AddBoolToObject(status_payload, "telemetry_active", telemetry_manager_is_active());
+
+    ESP_LOGI(TAG, "Sending real-time train status to target: %s...", target);    
+    send_ws_envelope(client, "train_status", target, status_payload);
 }

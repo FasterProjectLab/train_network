@@ -4,7 +4,7 @@ import { ProtocolConstants } from '../../../../models/Protocol';
 import './Telemetry.css';
 
 interface TelemetryViewProps {
-  targetId: string;
+  targetTrainId: string;
 }
 
 interface TelemetryData {
@@ -22,28 +22,28 @@ interface TelemetryData {
   stack_mon: number; 
 }
 
-const Telemetry: React.FC<TelemetryViewProps> = ({ targetId }) => {
+const Telemetry: React.FC<TelemetryViewProps> = ({ targetTrainId }) => {
   const [data, setData] = useState<TelemetryData | null>(null);
   const [isActive, setIsActive] = useState<boolean>(false);
   const [refreshInterval, setRefreshInterval] = useState<number>(500);
 
   const toggleTelemetry = useCallback((active: boolean) => {
-    if (!targetId) return;
+    if (!targetTrainId) return;
     wsService.send(JSON.stringify({
       type: active ? ProtocolConstants.ActionSubscibe : ProtocolConstants.ActionUnsubscribe,
-      target: targetId,
+      target: targetTrainId,
       payload: { interval: refreshInterval },
       tag: "telemetry"
     }));
     setIsActive(active);
-  }, [targetId, refreshInterval]);
+  }, [targetTrainId, refreshInterval]);
 
   useEffect(() => {
     const handleTelemetry = (rawData: string | Blob) => {
       if (!isActive || typeof rawData !== 'string') return;
       try {
         const envelope = JSON.parse(rawData);
-        if (envelope.type === "telemetry" && envelope.source === targetId) {
+        if (envelope.type === "telemetry" && envelope.source === targetTrainId) {
           setData(envelope.payload);
         }
       } catch (e) {}
@@ -54,12 +54,12 @@ const Telemetry: React.FC<TelemetryViewProps> = ({ targetId }) => {
       if (isActive) {
         wsService.send(JSON.stringify({
           type: ProtocolConstants.ActionUnsubscribe,
-          target: targetId,
+          target: targetTrainId,
           payload: "telemetry"
         }));
       }
     };
-  }, [targetId, isActive]);
+  }, [targetTrainId, isActive]);
 
   const toMB = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2);
   const toKB = (bytes: number) => (bytes / 1024).toFixed(1);

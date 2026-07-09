@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using WebSocketApp.Models;
+using System.Collections.Concurrent;
 
 namespace WebSocketApp.Services;
 
@@ -12,6 +13,7 @@ namespace WebSocketApp.Services;
 public class MessageHandler
 {
     private readonly ConnectionManager _mgr;
+    private readonly ConcurrentDictionary<string, JsonElement> _trainStatuses = new();
     private readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions 
     { 
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
@@ -73,6 +75,8 @@ public class MessageHandler
         var bytes = Encoding.UTF8.GetBytes(json);
         var segment = new ArraySegment<byte>(bytes);
 
+        Console.WriteLine($"[WS SEND] To: {targetId} | Raw: {json}");
+
         foreach (var session in sessions)
         {
             if (session.Socket.State == WebSocketState.Open)
@@ -88,6 +92,7 @@ public class MessageHandler
     /// </summary>
     public async Task SendToTargetAsync(string targetId, byte[] data, WebSocketMessageType type = WebSocketMessageType.Binary)
     {
+
         var sessions = _mgr.GetSessions(targetId);
         var segment = new ArraySegment<byte>(data);
 
@@ -121,12 +126,12 @@ public class MessageHandler
                 // Optimization: Tell the train to start its hardware stream ONLY if this is the first subscriber
                 if (!alreadyHasViewers)
                 {
-                    await SendControlToTrain(env.Target, $"{tag}_start", env.Payload);
+                    await SendControlToTrain(ProtocolConstants.TargetServer, env.Target, $"{tag}_start", env.Payload);
                 }
                 break;
 
             case ProtocolConstants.ActionUnSubscribe:
-                string? unSubTag = env.Payload?.ToString()?.ToLower();
+                string? unSubTag = env.Tag?.ToString()?.ToLower();
                 if (string.IsNullOrEmpty(unSubTag)) return;
 
                 _mgr.Unsubscribe(senderId, env.Target, unSubTag);
@@ -134,16 +139,13 @@ public class MessageHandler
                 // Optimization: Tell the train to stop hardware stream if NO ONE is left watching
                 if (!_mgr.GetSubscribers(env.Target, unSubTag).Any()) 
                 {
-                    await SendControlToTrain(env.Target, $"{unSubTag}_stop");
+                    await SendControlToTrain(ProtocolConstants.TargetServer, env.Target, $"{unSubTag}_stop");
                 }
                 break;
 
             // Forward hardware controls directly to the target device
-            case ProtocolConstants.ActionCameraControl:
-            case ProtocolConstants.ActionMotor:
-            case ProtocolConstants.ActionLight:
-            case ProtocolConstants.ActionSystem:
-                await SendControlToTrain(env.Target, env.Type, env.Payload);
+            default:
+                await SendControlToTrain(env.Source, env.Target, env.Type, env.Payload);
                 break;
         }
     }
@@ -151,12 +153,12 @@ public class MessageHandler
     /// <summary>
     /// Wraps an action into a Protocol Envelope and dispatches it to a train.
     /// </summary>
-    public async Task SendControlToTrain(string trainId, string actionType, object? payload = null)
+    public async Task SendControlToTrain(string sourceId, string trainId, string actionType, object? payload = null)
     {
         var cmd = new MessageEnvelope
         {
             Type = actionType,
-            Source = ProtocolConstants.TargetServer,
+            Source = sourceId,
             Target = trainId,
             Payload = payload
         };
@@ -170,42 +172,94 @@ public class MessageHandler
     {
         switch (env.Type)
         {
-            case ProtocolConstants.ActionConnection:
+            case ProtocolConstants.ActionAckWelcom:
                 // Handle SSRC registration if provided (used for mapping media streams)
                 if (env.Payload is JsonElement payloadElement && payloadElement.TryGetProperty("ssrc", out var ssrcProp))
                 {
                     _mgr.RegisterSessionSsrc(sessionId, ssrcProp.GetUInt32());
                 }
-                await SendActiveTrainsListAsync(senderId);
                 break;
 
-            case ProtocolConstants.ActionGetTains:
+            case ProtocolConstants.ActionGetTrains:
                 await SendActiveTrainsListAsync(senderId);
                 break;
             
             case ProtocolConstants.ActionPing:
                 // Pings are handled silently to keep the socket alive
                 break;
+            case ProtocolConstants.ActionGetTrackControllers:
+                await SendActiveTrackControllerListAsync(senderId);
+                break;
+            case ProtocolConstants.ActionTrainStatus:
+                if (env.Payload is JsonElement statusPayload) {
+                    _trainStatuses[senderId] = statusPayload;
+
+                    var message = new MessageEnvelope
+                    {
+                        Type = ProtocolConstants.ActionTrainStatus,
+                        Source = senderId,
+                        Target = ProtocolConstants.TargetUserGroup,
+                        Payload = statusPayload
+                    };
+
+                    await RouteAndSendEnvelopeAsync(message);
+                    
+                }
+                break;
         }
     }
 
-    /// <summary>
-    /// Broadcasts a status change (Connect/Disconnect) to all connected UI users.
-    /// </summary>
-    public async Task NotifyTrainStatusAsync(string trainSessionId, string trainId, string status)
+    public async Task sendGoodbyeAsync(string sessionId, string id, string type)
     {
         var message = new MessageEnvelope
         {
-            Type = "train_status_change",
+            Type = ProtocolConstants.ActionGoodbye,
             Source = ProtocolConstants.TargetServer,
-            Target = ProtocolConstants.TargetBroadcast,
-            Payload = new { trainId = trainId, status = status, sessionId = trainSessionId }
+            Payload = new { id = id, sessionId = sessionId, type = type }
         };
 
-        string json = JsonSerializer.Serialize(message, _jsonOptions);
-        foreach (var userId in _mgr.GetAllUserIds()) 
+        message.Target = ProtocolConstants.TargetUserGroup;
+        await RouteAndSendEnvelopeAsync(message);
+    }
+
+    public async Task sendWelcomAsync(string sessionId, string id, string type)
+    {
+        var message = new MessageEnvelope
         {
-            await SendToTargetAsync(userId, json);
+            Type = ProtocolConstants.ActionWelcom,
+            Source = ProtocolConstants.TargetServer,
+            Payload = new { id = id, sessionId = sessionId, type = type }
+        };
+
+        if (type == ProtocolConstants.TypeUser)
+        {
+            message.Target = ProtocolConstants.TargetUserGroup;
+            await RouteAndSendEnvelopeAsync(message);
+        }
+        else if (type == ProtocolConstants.TypeTrain || type == ProtocolConstants.TypeTrackController)
+        {
+            message.Target = id; 
+            await RouteAndSendEnvelopeAsync(message);
+
+            message.Target = ProtocolConstants.TargetUserGroup;
+            await RouteAndSendEnvelopeAsync(message);
+        }
+    }
+
+    public async Task RouteAndSendEnvelopeAsync(MessageEnvelope message)
+    {
+        if (message.Target == ProtocolConstants.TargetUserGroup)
+        {
+            string json = JsonSerializer.Serialize(message, _jsonOptions);
+            foreach (var userId in _mgr.GetAllUserIds()) 
+            {
+                await SendToTargetAsync(userId, json);
+            }
+        }
+        else if (!string.IsNullOrEmpty(message.Target))
+        {
+            string json = JsonSerializer.Serialize(message, _jsonOptions);
+            await SendToTargetAsync(message.Target, json);
         }
     }
 
@@ -213,14 +267,28 @@ public class MessageHandler
     {
         var response = new MessageEnvelope
         {
-            Type = ProtocolConstants.ActionAckConnection,
+            Type = ProtocolConstants.ActionGetTrains,
             Source = ProtocolConstants.TargetServer,
             Target = targetId,
-            Payload = new { active_trains = _mgr.GetActiveTrainSessions() }
+            Payload = new { active = _mgr.GetActiveTrainSessions() }
         };
         
-        await SendToTargetAsync(targetId, JsonSerializer.Serialize(response, _jsonOptions));
+        await RouteAndSendEnvelopeAsync(response);
     }
+
+    private async Task SendActiveTrackControllerListAsync(string targetId)
+    {
+        var response = new MessageEnvelope
+        {
+            Type = ProtocolConstants.ActionGetTrackControllers,
+            Source = ProtocolConstants.TargetServer,
+            Target = targetId,
+            Payload = new { active = _mgr.GetActiveTrackControllerSessions() }
+        };
+        
+        await RouteAndSendEnvelopeAsync(response);
+    }
+
 
     public async Task StopResourceIfNoSubscribers(string trainId, string tag)
     {
@@ -229,7 +297,7 @@ public class MessageHandler
         if (!hasSubscribers)
         {
             Console.WriteLine($"[AUTO-STOP] No more subscribers for '{tag}' on {trainId}. Sending stop command.");
-            await SendControlToTrain(trainId, $"{tag}_stop");
+            await SendControlToTrain(ProtocolConstants.TargetServer, trainId, $"{tag}_stop");
         }
     }
 }

@@ -26,20 +26,29 @@ public static class ProtocolConstants
     // Client Types
     public const string TypeTrain = "train";
     public const string TypeUser = "user";
+    public const string TypeTrackController = "track_controller";
 
     // Common Targets
     public const string TargetServer = "server";
     public const string TargetBroadcast = "broadcast";
+    public const string TargetUserGroup = "user_group";
+    public const string TargetTrainGroup = "train_group";
+    public const string TargetTrackControllerGroup = "track_controller_group";
 
     // Action/Message Types
     public const string ActionSystem = "system";          // Reboot, OTA, etc.
     public const string ActionMotor = "motor";            // Speed and Direction
     public const string ActionLight = "light";            // Headlights/Flash
-    public const string ActionConnection = "conn";        // Initial Handshake
-    public const string ActionAckConnection = "conn_ack"; // Handshake Response
+    public const string ActionWelcom = "welcom";        // Initial Handshake
+    public const string ActionAckWelcom = "ack_welcom";        
+    public const string ActionGoodbye = "goodbye";
     public const string ActionSubscribe = "subscribe";    // Start Telemetry/Video
     public const string ActionUnSubscribe = "unsubscribe";// Stop Telemetry/Video
-    public const string ActionGetTains = "get_trains";    // Discovery request
+    public const string ActionGetTrains = "get_trains"; 
+    public const string ActionGetTrackControllers = "get_track_controllers";
     public const string ActionPing = "ping";              // Keep-alive
     public const string ActionCameraControl = "camera_control"; // Resolution/Quality
+    public const string ActionTurnoutControl = "turnout_control";
+    public const string ActionGetTurnouts = "get_turnouts";
+    public const string ActionTrainStatus = "train_status";
 }

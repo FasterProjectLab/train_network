@@ -9,15 +9,18 @@
   flex: 1;
   background-color: var(--bg-light);
   padding: 24px;
+  
+  display: flex;
+  flex-direction: column;
+  gap: 24px; 
   overflow-y: auto;
 }
 
 .panel-content {
-  max-width: 1400px;
-  margin: 0 auto;
+  margin: 0; 
+  flex: 1;   
   display: flex;
   flex-direction: column;
-  gap: 20px;
 }
 
 .actions-section {
@@ -28,6 +31,7 @@
 }
 
 .main-view, .side-controls {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -38,15 +42,48 @@
   font-weight: 800;
 }
 
-.no-target {
-  height: 100%;
+.no-target-card {
+  flex: 1; /* Force la carte à prendre toute la hauteur disponible de .panel-content */
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center; /* Centrage vertical */
+  align-items: center;     /* Centrage horizontal */
+  text-align: center;
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  padding: 40px;
+}
+
+.no-target-card h3 {
+  margin-bottom: 10px;
+  font-size: 1.5rem;
+}
+
+.no-target-card p {
+  color: #888;
+  margin: 0;
 }
 
 @media (max-width: 1100px) {
   .actions-section {
     grid-template-columns: 1fr;
   }
+}
+
+.tabs-navigation .btn {
+  background-color: #2c2c2c;
+  color: #ffffff;
+  border: 1px solid #444;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.tabs-navigation .btn.active {
+  background-color: #007acc; /* Couleur de surbrillance de votre choix */
+  border-color: #0098ff;
+}
+
+.tabs-navigation .btn:hover {
+  background-color: #3d3d3d;
 }

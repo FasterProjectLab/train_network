@@ -3,6 +3,9 @@
 #include "esp_netif.h"
 #include "esp_log.h"
 #include "main_config.h"
+#include "light_manager/light_manager.h"
+#include "motor_manager/motor_manager.h"
+#include "camera_manager/camera_manager.h"
 
 /**
  * @brief Application Entry Point
@@ -29,15 +32,15 @@ void app_main(void) {
 
     // 3. Hardware Service Initializations
     // Priority 1: Camera (Critical peripheral)
-    if (camera_init_service() != ESP_OK) {
+    if (camera_manager_init_hardware() != ESP_OK) {
         ESP_LOGE(TAG, "Critical Camera initialization failed. Halting system.");
         return;
     }
 
     // Priority 2: Peripherals (Lights and Motors)
     ESP_LOGI(TAG, "Initializing hardware peripherals...");
-    light_service_init();
-    motor_service_init();
+    light_manager_init();
+    motor_manager_init();
 
     // 4. Network Connectivity
     /* * Start Wi-Fi in Station mode.

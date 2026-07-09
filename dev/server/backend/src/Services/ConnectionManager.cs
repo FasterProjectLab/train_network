@@ -129,6 +129,7 @@ public class ConnectionManager
     public void Subscribe(string userId, string trainId, string tag)
     {
         string topic = $"{trainId}:{tag.ToLower()}";
+        Console.WriteLine($"Attempting to subscribe user {userId} to topic {topic}");
 
         var subscribers = _topicSubscriptions.GetOrAdd(topic, _ => new HashSet<string>());
         lock(subscribers) { subscribers.Add(userId); }
@@ -140,6 +141,7 @@ public class ConnectionManager
     public void Unsubscribe(string userId, string trainId, string tag)
     {
         string topic = $"{trainId}:{tag.ToLower()}";
+        Console.WriteLine($"Attempting to unsubscribe user {userId} from topic {topic}");
         
         if (_topicSubscriptions.TryGetValue(topic, out var subscribers))
         {
@@ -193,8 +195,20 @@ public class ConnectionManager
         return _clients
             .Where(kvp => kvp.Value.Any(s => s.Type == ProtocolConstants.TypeTrain))
             .Select(kvp => new {
-                trainId = kvp.Key,
+                id = kvp.Key,
                 sessionId = kvp.Value.LastOrDefault(s => s.Type == ProtocolConstants.TypeTrain)?.ConnectionId,
+                status = "connected"
+            })
+            .ToList();
+    }
+
+    public object GetActiveTrackControllerSessions()
+    {
+        return _clients
+            .Where(kvp => kvp.Value.Any(s => s.Type == ProtocolConstants.TypeTrackController))
+            .Select(kvp => new {
+                id = kvp.Key,
+                sessionId = kvp.Value.LastOrDefault(s => s.Type == ProtocolConstants.TypeTrackController)?.ConnectionId,
                 status = "connected"
             })
             .ToList();

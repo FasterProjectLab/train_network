@@ -1,137 +1,114 @@
 import React, { useState, useEffect } from 'react';
 import './PanelControl.css';
 
-import Sidebar from './plugins/sidebar/Sidebar';
 import VideoCanvas from './plugins/videoCanvas/VideoCanvas';
 import MotorControl from './plugins/motorControl/MotorControl';
 import LightControl from './plugins/lightControl/LightControl';
 import StatusLogs from './plugins/statusLogs/StatusLogs';
 import SystemActions from './plugins/systemAction/SystemActions';
-import wsService from '../../services/WebsocketService';
-import { ProtocolConstants } from '../../models/Protocol';
 import Telemetry from './plugins/telemetry/Telemetry';
+import wsService from '../../services/WebsocketService';
+import { TrackController, Train } from '../../models/Protocol';
+import Sidebar from './sidebar/Sidebar';
+import TurnoutControl from './turnoutControl/TurnoutControl';
 
-/**
- * @interface PanelControlProps
- * @brief Properties passed from the App root to manage global state and logging.
- */
 interface PanelControlProps {
   myId: string;
-  trains: string[];
-  targetId: string;
-  setTargetId: (id: string) => void;
+  trains: Train[];
+  trackControllers: TrackController[];
   statusLogs: string[];          
   addLog: (msg: string) => void;
 }
 
-/**
- * @component PanelControl
- * @brief Main Dashboard View
- * * Orchestrates the video stream, motor/light plugins, and system telemetry.
- */
 const PanelControl: React.FC<PanelControlProps> = ({
   myId,
   trains,
-  targetId,
-  setTargetId,
+  trackControllers,
   statusLogs, 
   addLog
 }) => {
-  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [currentTrain, setCurrentTrain] = useState<Train | null>(null);
 
-  /**
-   * @note Target Synchronization
-   * Resets the stream and selection if the targeted train disconnects from the server.
-   */
-  useEffect(() => {
-    if (targetId && !trains.includes(targetId)) {
-      addLog(`Alert: Target ${targetId} is no longer available.`);
-      stopStream();
-      setTargetId(""); // Reset local selection
-    }
-  }, [trains, targetId, setTargetId, addLog]);
-
-  /**
-   * @brief Subscribes to the camera feed of the current target
-   */
-  const startStream = () => {
-    if (!targetId) return;
-    
-    wsService.send(JSON.stringify({
-      type: ProtocolConstants.ActionSubscibe,
-      target: targetId,
-      tag: "camera"
-    }));
-    
-    setIsStreaming(true);
-    addLog(`Starting camera stream on ${targetId}`);
+  const handleRefreshTrackController = () => {
+    addLog("Mise à jour de la liste des track Controllers actifs...");
+    wsService.sendGetTrackController();
   };
 
-  /**
-   * @brief Unsubscribes from the camera feed
-   */
-  const stopStream = () => {
-    if (!targetId) return;
-    
-    wsService.send(JSON.stringify({
-      type: ProtocolConstants.ActionUnsubscribe,
-      target: targetId,
-      tag: "camera"
-    }));
-    
-    setIsStreaming(false);
-    addLog(`Stopping camera stream on ${targetId}`);
+  const handleRefreshTrains = () => {
+    addLog("Mise à jour de la liste des trains actifs...");
+    wsService.sendGetTrains();
+  };
+
+  useEffect(() => {
+    wsService.sendGetTrains();
+  }, []);
+
+  useEffect(() => {
+    if (currentTrain) {
+      const updatedTrain = trains.find(t => t.id === currentTrain.id);
+      if (updatedTrain) {
+        setCurrentTrain(updatedTrain);
+      } else {
+        addLog(`Alert: Target ${currentTrain.id} is no longer available.`);
+        setCurrentTrain(null);
+      }
+    }
+  }, [trains, currentTrain?.id]);
+
+  const handleSelectTrainId = (id: string | null) => {
+    if (!id) {
+      setCurrentTrain(null);
+      return;
+    }
+    const selected = trains.find(t => t.id === id) || null;
+    setCurrentTrain(selected);
   };
 
   return (
     <div className="app-container">
-      {/* Navigation & Device List */}
+      
       <Sidebar 
         trains={trains} 
-        targetId={targetId} 
-        setTargetId={setTargetId} 
-        refreshTrains={() => wsService.requestActiveTrains()} 
+        targetTrainId={currentTrain?.id || null} 
+        setTargetTrainId={handleSelectTrainId} 
+        refreshTrains={handleRefreshTrains} 
       />
 
       <main className="control-panel">
-        {targetId ? (
-          <div className="panel-content">
-            <header className="panel-header">
-              <h2>Active Target: <span className="highlight">{targetId}</span></h2>
-            </header>
-            
-            <div className="actions-section">
-              {/* Left Column: Video Feed & Real-time Logs */}
+        <div className="panel-content">
+          {currentTrain ? (
+            <div className="actions-section" key={currentTrain.id}>
               <div className="main-view">
+                <header className="panel-header">
+                  <h2>Active Train: <span className="highlight">{currentTrain.id}</span></h2>
+                </header>
                 <VideoCanvas 
                   myId={myId} 
-                  targetId={targetId} 
-                  isStreaming={isStreaming} 
-                  onStart={startStream} 
-                  onStop={stopStream} 
+                  targetTrainId={currentTrain.id} 
                 />
-                <StatusLogs logs={statusLogs} />
               </div>
               
-              {/* Right Column: Hardware Commands & Telemetry */}
               <div className="side-controls">
-                <MotorControl targetId={targetId} addLog={addLog} />
-                <LightControl targetId={targetId} addLog={addLog} />
-                <SystemActions targetId={targetId} />
-                <Telemetry targetId={targetId} />
+                <MotorControl targetTrain={currentTrain} addLog={addLog} />
+                <LightControl targetTrain={currentTrain} addLog={addLog} />
+                <SystemActions targetTrainId={currentTrain.id} />
+                <Telemetry targetTrainId={currentTrain.id} />
               </div>
             </div>
-          </div>
-        ) : (
-          /* Empty State: Prompt user to select a device */
-          <div className="no-target">
-            <div className="card">
-              <h3>Ready for Action</h3>
-              <p>Please select a train from the sidebar to take control.</p>
+          ) : (
+            <div className="no-target-card">
+              <h3>Aucun train sélectionné</h3>
+              <p>Sélectionnez un convoi dans la barre latérale pour prendre le contrôle.</p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <StatusLogs logs={statusLogs} />
       </main>
+
+      <TurnoutControl
+        trackControllers={trackControllers}
+        addLog={addLog}
+      />
     </div>
   );
 };

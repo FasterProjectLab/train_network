@@ -14,7 +14,6 @@ import PanelControl from './components/panelControl/PanelControl';
 const App: React.FC = () => {
   // Local state for identifying the controller and the currently selected train
   const [myId, setMyId] = useState<string>('');
-  const [targetId, setTargetId] = useState<string>('');
 
   /**
    * We extract the business logic and WebSocket state from our custom hook.
@@ -23,6 +22,7 @@ const App: React.FC = () => {
   const { 
     isConnected,      // Boolean: True if the WebSocket connection is active
     trains,           // String Array: List of available trains discovered by the server
+    trackControllers,
     statusLogs,       // String Array: History of system events and commands
     addLog,           // Function: Allows UI components to push new messages to the log
     handleConnect     // Function: Triggers the WebSocket handshake process
@@ -41,14 +41,13 @@ const App: React.FC = () => {
           connect={handleConnect} 
         />
       ) : (
-        <PanelControl 
-          myId={myId} 
-          trains={trains}
-          targetId={targetId}
-          setTargetId={setTargetId}
-          statusLogs={statusLogs} 
-          addLog={addLog}
-        />
+          <PanelControl 
+            myId={myId} 
+            trains={trains}
+            trackControllers={trackControllers}
+            statusLogs={statusLogs} 
+            addLog={addLog}
+          />
       )}
     </div>
   );

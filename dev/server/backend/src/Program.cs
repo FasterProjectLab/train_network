@@ -36,7 +36,7 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
     if (!context.WebSockets.IsWebSocketRequest) return;
 
     string type = context.Request.Query["type"].ToString().ToLower();
-    if (type != ProtocolConstants.TypeTrain && type != ProtocolConstants.TypeUser) return;
+    if (type != ProtocolConstants.TypeTrain && type != ProtocolConstants.TypeUser && type != ProtocolConstants.TypeTrackController) return;
 
     // Preventive cleanup: if a train reconnects, kill ghost sessions
     if (type == ProtocolConstants.TypeTrain) await mgr.ClearOldSessionsForTrain(id);
@@ -47,9 +47,7 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
     mgr.AddClient(id, connectionId, webSocket, type);
     Console.WriteLine($"[CONNECTED] {id} [{connectionId}] ({type})");
 
-    if (type == ProtocolConstants.TypeTrain) {
-        await handler.NotifyTrainStatusAsync(connectionId, id, "connected");
-    }
+    await handler.sendWelcomAsync(connectionId, id, type);
 
     var buffer = new byte[1024 * 64]; 
 
@@ -94,11 +92,7 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
         await mgr.RemoveClient(connectionId);
         Console.WriteLine($"[DISCONNECTED] {id} [{connectionId}]");
 
-        if (type == ProtocolConstants.TypeTrain) 
-        {
-            await handler.NotifyTrainStatusAsync(connectionId, id, "disconnected");
-        } 
-        else if (type == ProtocolConstants.TypeUser) 
+        if (type == ProtocolConstants.TypeUser) 
         {
             // 3. For each topic (e.g. "train01:camera"), check if we can stop the hardware
             foreach (var topic in userInterests)
@@ -111,6 +105,7 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
                 }
             }
         }
+        await handler.sendGoodbyeAsync(connectionId, id, type);
     }
 });
 
@@ -119,17 +114,22 @@ app.Map("/ws/{id}", async (string id, HttpContext context, ConnectionManager mgr
 // This acts as an MJPEG Proxy between the internal UDP stream and the Browser <img> tag.
 app.MapGet("/video/{trainId}", async (string trainId, string userId, HttpContext context, VideoBroadcastService broadcaster, ConnectionManager mgr, CancellationToken ct) => {
     
-    // Security: Only allow video if the user is currently subscribed via WebSocket
+    Console.WriteLine($"User {userId} requested video stream for train {trainId}");
+    
     var subscribers = mgr.GetSubscribers(trainId, "camera");
     if (!subscribers.Contains(userId))
     {
+        Console.WriteLine($"Access denied for user {userId} on train {trainId}. User not subscribed to 'camera'.");
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;
     }
 
+    Console.WriteLine($"Access granted for user {userId}. Starting MJPEG stream for train {trainId}...");
+
     // Set standard MJPEG headers
     context.Response.ContentType = "multipart/x-mixed-replace; boundary=--frame";
     var channel = broadcaster.Subscribe(trainId);
+    int frameCount = 0;
 
     try
     {
@@ -142,9 +142,17 @@ app.MapGet("/video/{trainId}", async (string trainId, string userId, HttpContext
             await context.Response.Body.WriteAsync(frame, ct);
             await context.Response.WriteAsync("\r\n", ct);
             await context.Response.Body.FlushAsync(ct);
+
+            frameCount++;
+            // Log de débogage toutes les 30 images pour éviter de flooder la console
+            if (frameCount % 30 == 0)
+            {
+                frameCount = 0;
+                Console.WriteLine($"Sent frames to user {userId} for train {trainId}");
+            }
         }
     }
-    catch (OperationCanceledException) { /* Browser closed tab or stopped stream */ }
+    catch (OperationCanceledException) { Console.WriteLine($"Stream disconnected: User {userId} closed the connection or stopped the stream for train {trainId}."); }
     catch (Exception ex) { Console.WriteLine($"[STREAM ERROR] {ex.Message}"); }
 });
 

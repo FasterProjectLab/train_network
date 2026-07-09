@@ -1,12 +1,9 @@
 set(srcs 
     "main.c" 
-    "wifi_manager.c" 
-    "ws_manager.c" 
+    "wifi_manager/wifi_manager.c"
     "ota_manager/ota_manager.c"
-    "camera_manager/camera_manager.c"
-    "telemetry_manager/telemetry_manager.c"
-    "motor_manager/motor_manager.c"
-    "light_manager/light_manager.c")
+    "websocket_manager/websocket_manager.c"
+    "turnout_manager/turnout_manager.c")
 
 idf_component_register(
     SRCS ${srcs}
@@ -21,9 +18,9 @@ idf_component_register(
         esp_websocket_client # Pour le WebSocket
         esp_http_client     # Requis par l'OTA
         esp_https_ota       # Pour l'OTA
-        json                # Pour cJSON.h
+        cjson                # Pour cJSON.h
         esp_partition       # Pour la gestion des partitions
         app_update          # Pour la validation du nouveau firmware
-        esp32-camera
         esp_http_server
+        esp_driver_ledc
 )

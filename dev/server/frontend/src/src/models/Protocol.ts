@@ -8,16 +8,26 @@ export const ProtocolConstants = {
   // Client Classifications
   TypeUser: "user",
   TypeTrain: "train",
+  TypeTrackController: "track_controller",
 
   // Reserved Routing Targets
   TargetServer: "server",
 
   // Connection Lifecycle Actions
-  ActionConn: "conn",
-  ActionConnAck: "conn_ack",
+  ActionWelcom: "welcom",
+  ActionConnAck: "ack_welcom",
+  ActionGoodbye: "goodbye",
+
+  ActionGetTrains: "get_trains",
+  ActionGetTrackControllers: "get_track_controllers",
+  ActionGetTurnouts: "get_turnouts",
+  ActionSetTurnouts: "set_turnouts",
+  ActionTrainStatus: "train_status",
+  ActionGetTrainStatus: "get_train_status",
+  ActionLight: "light",
+  ActionMotor: "motor",
 
   // Device Control Actions
-  ActionSetSpeed: "motor",      // Used for MotorControl logic
   ActionSystem: "system",       // Used for SystemActions (Reboot, OTA, etc.)
   ActionLog: "log",             // Used for console/terminal feedback
   
@@ -33,8 +43,40 @@ export const ProtocolConstants = {
  */
 export interface MessageEnvelope {
   type: string;        // The action or command type (from ProtocolConstants)
+  tag?: string;
   source: string;      // Unique ID of the sender (MAC address or Controller ID)
   target: string;      // Unique ID of the recipient or "server"
   payload?: any;       // Optional data object specific to the command
   timestamp?: number;  // Unix timestamp (milliseconds) for synchronization/logging
+}
+
+export interface TurnoutDevice {
+  id: string;
+  position: 'normal' | 'divergent';
+}
+
+export interface TrackController {
+  id: string;
+  sessionId: string;
+  status: string;
+  turnouts: TurnoutDevice[];
+}
+
+export interface MotorStatus {
+  speed: number;
+  dir: 'fwd' | 'rev';
+}
+
+export interface TrainStatus {
+  light: boolean;
+  motor: MotorStatus;
+  cameraActive: boolean;
+  telemetryActive: boolean;
+}
+
+export interface Train {
+  id: string;             
+  sessionId: string;      
+  status: TrainStatus;    
+  lastUpdated: number;   
 }

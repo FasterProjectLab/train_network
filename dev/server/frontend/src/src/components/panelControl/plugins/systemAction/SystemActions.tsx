@@ -4,19 +4,19 @@ import { ProtocolConstants } from '../../../../models/Protocol';
 import './SystemActions.css';
 
 interface SystemActionsProps {
-  targetId: string;
+  targetTrainId: string;
 }
 
-const SystemActions: React.FC<SystemActionsProps> = ({ targetId }) => {
+const SystemActions: React.FC<SystemActionsProps> = ({ targetTrainId }) => {
   const DEFAULT_OTA_URL = "https://192.168.10.1/firmware.bin";
   const [otaUrl, setOtaUrl] = useState<string>(DEFAULT_OTA_URL);
 
   const sendSystemCommand = (action: string, data: any) => {
-    if (!targetId) return;
+    if (!targetTrainId) return;
 
     wsService.send(JSON.stringify({
       type: ProtocolConstants.ActionSystem, 
-      target: targetId,
+      target: targetTrainId,
       payload: { action: action, ...data},
       timestamp: Math.floor(Date.now() / 1000)
     }));
