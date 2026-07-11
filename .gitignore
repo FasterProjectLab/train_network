@@ -1,5 +1,5 @@
 dev/target/build
-dev/target/main/server_cert.pem
+#dev/target/main/server_cert.pem
 dev/target/firmware.bin
 dev/target/dependencies.lock
 dev/target/managed_components

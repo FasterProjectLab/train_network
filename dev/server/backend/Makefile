@@ -2,10 +2,10 @@ enter_dotnet:
 	docker run -it --rm -v $(PWD)/src:/appli -w /appli --name websocket mcr.microsoft.com/dotnet/sdk:8.0 bash
 
 build:
-	docker build -t websocket .
+	docker build -t websocket -f Dockerfile.prod .
 
 run:
-	docker run -it --rm -p 8080:8080 websocket
+	docker run -it --rm -p 8080:8080 -p 5004:5004/udp websocket
 
 build_dev:
 	docker build -t websocket-dev -f Dockerfile.dev .

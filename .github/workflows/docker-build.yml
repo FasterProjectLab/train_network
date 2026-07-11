@@ -1,11 +1,10 @@
-name: Build and Push Multiple Docker Images to GHCR
+name: Build and Push TrainNetWork project
 
 on:
   push:
     tags:
       - 'v*'
 
-# Permet au workflow de publier des packages sur GitHub
 permissions:
   contents: read
   packages: write
@@ -16,8 +15,10 @@ jobs:
     strategy:
       matrix:
         image-config:
-          - { name: "backend", context: "./dev/server/backend", file: "./dev/server/backend/Dockerfile.prod" }
-          - { name: "access_point", context: "./dev/server/access_point", file: "./dev/server/access_point/Dockerfile.prod" }
+          - { name: "backend", context: "./dev/server/backend", file: "Dockerfile.prod" }
+          - { name: "access_point", context: "./dev/server/access_point", file: "Dockerfile.prod" }
+          - { name: "frontend", context: "./dev/server/frontend", file: "Dockerfile.prod" }
+          - { name: "distrib", context: "./dev/server/distrib", file: "Dockerfile.prod" }
 
     steps:
     - name: Checkout du code
@@ -27,18 +28,14 @@ jobs:
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
-        # github.actor est la personne (ou le bot) qui lance le workflow
         username: ${{ github.actor }}
-        # GITHUB_TOKEN est fourni automatiquement par GitHub pour ce workflow
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Extraire les métadonnées pour Docker
       id: meta
       uses: docker/metadata-action@v5
       with:
-        # Format pour GHCR : ghcr.io/nom-proprietaire/nom-image
-        # github.repository_owner passe automatiquement en minuscule pour Docker
-        images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image-config.name }}
+        images: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ matrix.image-config.name }}
         tags: |
           type=ref,event=tag
           type=raw,value=latest
@@ -47,6 +44,32 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: ${{ matrix.image-config.context }}
+        file: ${{ matrix.image-config.context }}/${{ matrix.image-config.file }}
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+
+  build-idf:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout du code
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - name: Compiler le projet ESP-IDF
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: v5.1 
+        target: esp32s3         
+        path: './dev/target'               
+
+    - name: Archiver et sauvegarder le firmware
+      uses: actions/upload-artifact@v4
+      with:
+        name: train-firmware
+        path: |
+          dev/target/build/bootloader/bootloader.bin
+          dev/target/build/partition_table/partition-table.bin
+          dev/target/build/*.bin
+        retention-days: 7 

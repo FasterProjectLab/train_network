@@ -1,7 +1,7 @@
 
 
 setup:
-	docker build -t ota_server .
+	docker build -t ota_server -f Dockerfile.dev .
 
 run: 
 	docker run -it --rm -p 192.168.10.1:443:443 --name ota_server ota_server
