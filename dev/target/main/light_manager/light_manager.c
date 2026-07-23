@@ -10,6 +10,8 @@
 
 static bool s_lights_enabled = false;
 
+static const char *TAG = "LIGHT_MANAGER";
+
 void light_manager_init(void) {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << GPIO_WHITE_FRONT) | 

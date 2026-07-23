@@ -18,8 +18,6 @@ extern "C" {
  */
 #define SERVER_WS_URL  "ws://192.168.10.1:8080/ws/%s?type=train"
 
-/** @brief Global logging tag for the application */
-static const char *TAG = "ESP32_TRAIN_APP";
 
 // ===== SYSTEM & OTA =====
 /** @brief Starts the Wi-Fi station mode */

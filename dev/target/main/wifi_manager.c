@@ -3,6 +3,8 @@
 #include "esp_log.h"
 #include "main_config.h"
 
+static const char *TAG = "WIFI_MANAGER";
+
 /**
  * @brief Event handler for Wi-Fi and IP events
  * * Handles connection logic, automatic reconnection, and triggers

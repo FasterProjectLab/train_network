@@ -4,6 +4,8 @@
 #include "esp_ota_ops.h"
 #include "ota_manager.h"
 
+static const char *TAG = "OTA_MANAGER";
+
 // Reference to the embedded certificate for HTTPS validation
 extern const uint8_t server_cert_pem_start[] asm("_binary_server_cert_pem_start");
 

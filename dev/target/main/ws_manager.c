@@ -6,8 +6,6 @@
 #include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "light_manager/light_manager.h"
-#include "motor_manager/motor_manager.h"
 #include "camera_manager/camera_manager.h"
 #include "telemetry_manager/telemetry_manager.h"
 #include "ota_manager/ota_manager.h"
@@ -26,6 +24,8 @@ void websocket_stop_heartbeat(void);
 static void send_ws_train_status(esp_websocket_client_handle_t client, const char *target);
 
 static TaskHandle_t heartbeat_task_handle = NULL;
+
+static const char *TAG = "WS_MANAGER";
 
 void websocket_app_start(void) {
     static char full_url[128];
@@ -168,34 +168,34 @@ static void handle_motor_command(cJSON *payload) {
         }
         
         if (speed_val > 0) {
-            motor_manager_set_speed(speed_val, forward);
+            //motor_manager_drv8833_set_speed(speed_val);
             ESP_LOGI(TAG, "Motor: Speed %d, Dir: %s", speed_val, forward ? "FWD" : "REV");
         } else {
-            motor_manager_stop();
-            motor_manager_set_direction(forward);
+            //motor_manager_drv8833_set_speed(0);
+            //motor_manager_set_direction(forward);
         }
     }
 }
 
 static void handle_light_command(cJSON *payload) {
-    if (!cJSON_IsObject(payload)) return;
+    // if (!cJSON_IsObject(payload)) return;
 
-    cJSON *status_item = cJSON_GetObjectItem(payload, "status");
-    if (!cJSON_IsString(status_item)) return;
+    // cJSON *status_item = cJSON_GetObjectItem(payload, "status");
+    // if (!cJSON_IsString(status_item)) return;
 
-    if (strcmp(status_item->valuestring, "ON") == 0) {
-        light_manager_update_by_current_dir();
-    } else {
-        light_manager_set(false, false, false, false);
-    }
+    // if (strcmp(status_item->valuestring, "ON") == 0) {
+    //     light_manager_update_by_current_dir();
+    // } else {
+    //     light_manager_set(false, false, false, false);
+    // }
 }
 
 void light_manager_update_by_current_dir(void) {
-    if (motor_manager_get_current_direction()) {
-        light_manager_set(false, false, true, true);
-    } else {
-        light_manager_set(true, true, false, false);
-    }
+    // if (motor_manager_get_current_direction()) {
+    //     light_manager_set(false, false, true, true);
+    // } else {
+    //     light_manager_set(true, true, false, false);
+    // }
 }
 
 static void handle_system_command(cJSON *payload) {
@@ -277,14 +277,14 @@ static void send_ws_train_status(esp_websocket_client_handle_t client, const cha
     cJSON *status_payload = cJSON_CreateObject();
     if (!status_payload) return;
 
-    cJSON_AddBoolToObject(status_payload, "light", light_manager_is_enabled());
+    //cJSON_AddBoolToObject(status_payload, "light", light_manager_is_enabled());
 
     cJSON *motor_obj = cJSON_CreateObject();
     if (motor_obj) {      
-        bool forward = motor_manager_get_current_direction();
+        //bool forward = motor_manager_get_current_direction();
         
-        cJSON_AddNumberToObject(motor_obj, "speed", motor_manager_get_current_speed());
-        cJSON_AddStringToObject(motor_obj, "dir", forward ? "fwd" : "rev");
+        //cJSON_AddNumberToObject(motor_obj, "speed", motor_manager_get_current_speed());
+        //cJSON_AddStringToObject(motor_obj, "dir", forward ? "fwd" : "rev");
         cJSON_AddItemToObject(status_payload, "motor", motor_obj);
     }
 

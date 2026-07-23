@@ -31,6 +31,8 @@
 #define QUALITY_MAX 45   // Lowest quality (high compression)
 #define TARGET_SEND_TIME_MS 35 // Threshold for network congestion
 
+static const char *TAG = "CAMERA_MANAGER";
+
 static TaskHandle_t s_stream_task_handle = NULL;
 static bool s_camera_active = false;
 

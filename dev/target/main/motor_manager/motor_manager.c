@@ -1,141 +1,92 @@
-#include "motor_manager.h"
-#include "light_manager/light_manager.h"
+#include <stdio.h>
+#include <math.h>
 #include "driver/ledc.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "main_config.h"
+#include "i2c_manager/i2c_manager.h" // Inclusion de votre nouveau gestionnaire I2C
 
-#define MOTOR_AIN1_GPIO 47
-#define MOTOR_AIN2_GPIO 21
+// Tag unique pour les logs de ce module
+static const char *TAG = "MOTOR_MANAGER";
 
-#define MOTOR_PWM_FREQ       20000  
-#define MOTOR_PWM_RES        LEDC_TIMER_10_BIT
-#define MOTOR_PWM_MAX_DUTY   ((1 << 10) - 1) 
+#define PCA9685_ADDR          0x40
+#define MODE1_REG             0x00
+#define PRESCALE_REG          0xFE
+#define CHANNEL_BASE_REG      0x06 
 
-#define MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
-#define MOTOR_PWM_TIMER      LEDC_TIMER_1
-#define MOTOR_PWM_CH_AIN1    LEDC_CHANNEL_2
-#define MOTOR_PWM_CH_AIN2    LEDC_CHANNEL_3
+#define MOTOR_AIN1_CH         0
+#define MOTOR_AIN2_CH         1
 
-static bool s_current_dir = true;       
-static uint8_t s_current_speed = 0;       
-static int64_t s_last_stop_time = 0;      
-static bool s_is_currently_moving = false;
-
-bool motor_manager_get_current_direction(void) {
-    return s_current_dir;
-}
-
-uint8_t motor_manager_get_current_speed(void) {
-    return s_current_speed;
-}
-
-
-void motor_manager_set_direction(bool forward) {
-    if (s_current_dir == forward) return;
-
-    s_current_dir = forward;
+esp_err_t motor_manager_pca9685_init(void) {
+    uint8_t setup_data[2];
     
-    ESP_LOGI("MOTOR", "Motor direction changed to: %s", s_current_dir ? "FORWARD" : "BACKWARD");
-
-    if (light_manager_is_enabled()) {
-        light_manager_update_by_current_dir();
-    }
-}
-
-void motor_manager_init(void)
-{
-    ledc_timer_config_t timer_cfg = {
-        .speed_mode       = MOTOR_PWM_MODE,
-        .timer_num        = MOTOR_PWM_TIMER,
-        .duty_resolution  = MOTOR_PWM_RES,
-        .freq_hz          = MOTOR_PWM_FREQ,
-        .clk_cfg          = LEDC_AUTO_CLK
-    };
-    ESP_ERROR_CHECK(ledc_timer_config(&timer_cfg));
-
-    ledc_channel_config_t ch1 = {
-        .gpio_num   = MOTOR_AIN1_GPIO,
-        .speed_mode = MOTOR_PWM_MODE,
-        .channel    = MOTOR_PWM_CH_AIN1,
-        .timer_sel  = MOTOR_PWM_TIMER,
-        .duty       = 0,
-        .hpoint     = 0
-    };
-    ESP_ERROR_CHECK(ledc_channel_config(&ch1));
-
-    ledc_channel_config_t ch2 = {
-        .gpio_num   = MOTOR_AIN2_GPIO,
-        .speed_mode = MOTOR_PWM_MODE,
-        .channel    = MOTOR_PWM_CH_AIN2,
-        .timer_sel  = MOTOR_PWM_TIMER,
-        .duty       = 0,
-        .hpoint     = 0
-    };
-    ESP_ERROR_CHECK(ledc_channel_config(&ch2));
-
-    ESP_LOGI("MOTOR", "Motor manager initialized (20kHz, 10-bit resolution)");
-}
-
-void motor_manager_set_speed(uint8_t duty, bool forward)
-{
-    int64_t now = esp_timer_get_time();
-
-    if (duty > 100) duty = 100;
-
-    if (forward != s_current_dir && duty > 0) {
-        uint32_t elapsed_ms = (uint32_t)((now - s_last_stop_time) / 1000);
-
-        if (s_is_currently_moving || elapsed_ms < 3000) {
-            ESP_LOGW("MOTOR", "Reversal rejected! Must wait 3s at full stop (Elapsed: %lu ms)", elapsed_ms);
-            duty = 0; 
-        } else {
-            motor_manager_set_direction(forward);
-            ESP_LOGI("MOTOR", "Direction changed successfully");
-        }
-    }
-
-    if (duty == 0) {
-        if (s_is_currently_moving) {
-            s_last_stop_time = now; 
-            s_is_currently_moving = false;
-            ESP_LOGI("MOTOR", "Motor stopped, 3s safety timer started");
-        }
-    } else {
-        s_is_currently_moving = true;
-        motor_manager_set_direction(forward);
-    }
-
-    s_current_speed = duty;
-
-    uint32_t pwm_duty = (duty * MOTOR_PWM_MAX_DUTY) / 100;
-
-    if (forward) {
-        ledc_set_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN1, pwm_duty);
-        ledc_update_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN1);
-
-        ledc_set_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN2, 0);
-        ledc_update_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN2);
-    } else {
-        ledc_set_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN1, 0);
-        ledc_update_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN1);
-
-        ledc_set_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN2, pwm_duty);
-        ledc_update_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN2);
-    }
-}
-
-void motor_manager_stop(void)
-{
-    ledc_set_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN1, 0);
-    ledc_update_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN1);
-
-    ledc_set_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN2, 0);
-    ledc_update_duty(MOTOR_PWM_MODE, MOTOR_PWM_CH_AIN2);
+    // 1. Réveil (Sortir du mode SLEEP)
+    // On met le bit 4 à 0 dans le registre MODE1
+    setup_data[0] = MODE1_REG;
+    setup_data[1] = 0x21; // 0x21 = 0010 0001 (Auto-increment enable + Device enabled)
+    esp_err_t ret = i2c_manager_write(PCA9685_ADDR, setup_data, 2);
     
-    s_is_currently_moving = false;
-    s_current_speed = 0;
-    s_last_stop_time = esp_timer_get_time();
-    ESP_LOGI("MOTOR", "Emergency stop triggered");
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Erreur d'initialisation du PCA9685");
+    } else {
+        ESP_LOGI(TAG, "PCA9685 initialisé avec succès");
+    }
+    
+    // 2. Optionnel : Définir la fréquence (ex: 200Hz pour un moteur DC)
+    // Si tu en as besoin, il y a une procédure spécifique (Sleep -> Write Prescale -> Wake)
+    
+    return ret;
+}
+
+esp_err_t motor_manager_pca9685_set_pwm(uint8_t channel, uint16_t duty) {
+    if (duty > 4095) duty = 4095;
+
+    uint8_t reg_base = CHANNEL_BASE_REG + (4 * channel);
+    uint8_t data[5];
+    
+    data[0] = reg_base;
+    data[1] = 0x00;           // ON Low
+    data[2] = 0x00;           // ON High
+    data[3] = duty & 0xFF;    // OFF Low
+    data[4] = (duty >> 8);    // OFF High
+
+    // Utilisation de la fonction mise à jour
+    return i2c_manager_write(PCA9685_ADDR, data, sizeof(data));
+}
+
+void motor_manager_drv8833_set_speed(int16_t speed) {
+    if (speed > 0) {
+        // Marche Avant : PWM sur AIN1, 0 sur AIN2
+        motor_manager_pca9685_set_pwm(MOTOR_AIN1_CH, (uint16_t)speed);
+        motor_manager_pca9685_set_pwm(MOTOR_AIN2_CH, 0);
+        ESP_LOGD(TAG, "Avant : %d", speed);
+    } 
+    else if (speed < 0) {
+        // Marche Arrière : 0 sur AIN1, PWM sur AIN2
+        motor_manager_pca9685_set_pwm(MOTOR_AIN1_CH, 0);
+        motor_manager_pca9685_set_pwm(MOTOR_AIN2_CH, (uint16_t)(-speed));
+        ESP_LOGD(TAG, "Arrière : %d", -speed);
+    } 
+    else {
+        // Stop (Roue libre)
+        motor_manager_pca9685_set_pwm(MOTOR_AIN1_CH, 0);
+        motor_manager_pca9685_set_pwm(MOTOR_AIN2_CH, 0);
+        ESP_LOGI(TAG, "Stop");
+    }
+}
+
+void motor_manager_drv8833_set_speed_percent(int8_t percent) {
+    // 1. Limiter l'entrée entre -100 et 100 par sécurité
+    if (percent > 100) percent = 100;
+    if (percent < -100) percent = -100;
+
+    // 2. Calculer la valeur PWM (Règle de trois : 4095 / 100 = 40.95)
+    // On utilise un float temporaire pour la précision avant de repasser en int
+    int16_t pca_speed = (int16_t)(percent * 40.95f);
+
+    // 3. Appeler la fonction de pilotage existante
+    motor_manager_drv8833_set_speed(pca_speed);
+    
+    ESP_LOGI(TAG, "Vitesse : %d%% (Valeur PCA : %d)", percent, pca_speed);
 }

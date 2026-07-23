@@ -11,12 +11,16 @@
 #include "esp_wifi.h"
 #include "cJSON.h"
 #include "driver/temperature_sensor.h" 
+#include "battery_manager/battery_manager.h"
+#include <math.h>
 
 static esp_timer_handle_t s_telemetry_timer = NULL;
 static esp_websocket_client_handle_t s_ws_client_handle = NULL;
 static temperature_sensor_handle_t s_temp_sensor = NULL;
 static uint32_t s_task_interval_ms = 5000;
 static bool s_telemetry_active = false;
+
+static const char *TAG = "TELEMETRY_MANAGER";
 
 static void telemetry_start(int interval_ms);
 static void telemetry_stop(void);
@@ -127,6 +131,7 @@ static void telemetry_callback(void* arg) {
     if (s_temp_sensor) {
         temperature_sensor_get_celsius(s_temp_sensor, &tsens_out);
     }
+    float battery_voltage = battery_manager_get_voltage();
 
     cJSON *payload = cJSON_CreateObject();
     if (payload == NULL) {
@@ -137,6 +142,7 @@ static void telemetry_callback(void* arg) {
     cJSON_AddNumberToObject(payload, "cpu0", cpu.core0);
     cJSON_AddNumberToObject(payload, "cpu1", cpu.core1);
     cJSON_AddNumberToObject(payload, "temp", (int)tsens_out);
+    cJSON_AddNumberToObject(payload, "battery_v", round(battery_voltage * 100.0) / 100.0);
     cJSON_AddNumberToObject(payload, "ram_free", free_ram);
     cJSON_AddNumberToObject(payload, "ram_min", min_ram);
     cJSON_AddNumberToObject(payload, "psram_free", free_psram);
@@ -160,6 +166,7 @@ esp_err_t telemetry_manager_task_init(uint32_t interval_ms, esp_websocket_client
     if (s_telemetry_timer != NULL) return ESP_OK;
 
     init_temp_sensor();
+    battery_manager_init();
 
     s_task_interval_ms = interval_ms;
 

@@ -6,7 +6,9 @@ set(srcs
     "camera_manager/camera_manager.c"
     "telemetry_manager/telemetry_manager.c"
     "motor_manager/motor_manager.c"
-    "light_manager/light_manager.c")
+    "light_manager/light_manager.c"
+    "i2c_manager/i2c_manager.c"
+    "battery_manager/battery_manager.c")
 
 idf_component_register(
     SRCS ${srcs}
@@ -14,6 +16,7 @@ idf_component_register(
     EMBED_TXTFILES "./server_cert.pem"
     # Liste exhaustive des dépendances nécessaires :
     PRIV_REQUIRES 
+        esp_driver_i2c
         nvs_flash           # Pour nvs_flash.h
         esp_wifi            # Pour esp_wifi.h
         esp_event           # Pour les boucles d'événements
@@ -26,4 +29,5 @@ idf_component_register(
         app_update          # Pour la validation du nouveau firmware
         esp32-camera
         esp_http_server
+        esp_adc
 )

@@ -69,7 +69,7 @@ const VideoCanvas: React.FC<VideoCanvasProps> = ({ myId, targetTrainId }) => {
       wsService.send(JSON.stringify({
         type: "camera_control",
         source: myId,
-        target: currentTargetId,
+        target: currentTargetId.current,
         payload: { 
             variable: "quality", 
             value: val 
@@ -88,7 +88,7 @@ const VideoCanvas: React.FC<VideoCanvasProps> = ({ myId, targetTrainId }) => {
       wsService.send(JSON.stringify({
         type: "camera_control",
         source: myId,
-        target: currentTargetId,
+        target: currentTargetId.current,
         payload: { 
             variable: "framesize", 
             value: resId 

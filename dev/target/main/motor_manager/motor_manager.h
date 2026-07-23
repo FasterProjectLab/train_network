@@ -2,26 +2,11 @@
 #define MOTOR_MANAGER_H
 
 #include <stdint.h>
-#include <stdbool.h>
+#include "esp_err.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+esp_err_t motor_manager_pca9685_init(void);
+esp_err_t motor_manager_pca9685_set_pwm(uint8_t channel, uint16_t duty);
+void motor_manager_drv8833_set_speed(int16_t speed);
+void motor_manager_drv8833_set_speed_percent(int8_t percent);
 
-void motor_manager_init(void);
-
-void motor_manager_set_speed(uint8_t duty, bool forward);
-
-void motor_manager_stop(void);
-
-void motor_manager_set_direction(bool forward);
-
-bool motor_manager_get_current_direction(void);
-
-uint8_t motor_manager_get_current_speed(void);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif 
+#endif // MOTOR_MANAGER_H
